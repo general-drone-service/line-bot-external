@@ -52,6 +52,7 @@ async function handleEvent(event: LineEvent) {
     event.message.text &&
     event.replyToken
   ) {
-    await handleAiChat(event.replyToken, event.message.text)
+    const userId = event.source?.userId ?? "unknown"
+    await handleAiChat(event.replyToken, event.message.text, userId)
   }
 }

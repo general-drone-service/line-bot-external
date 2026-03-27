@@ -6,14 +6,22 @@ import { reply } from "@/lib/line"
 import type { LineMessage } from "@/lib/line"
 import { buildQuoteBubble } from "@/lib/flex"
 import type { QuoteData } from "@/lib/services/quote-api"
+import { loadHistory, saveMessage } from "./history"
 
-export async function handleAiChat(replyToken: string, userText: string) {
+export async function handleAiChat(replyToken: string, userText: string, userId: string) {
   const client = getAnthropicClient()
+
+  // Load conversation history
+  const history = await loadHistory(userId)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const messages: any[] = [
+    ...history.map((m) => ({ role: m.role, content: m.content })),
     { role: "user", content: userText },
   ]
+
+  // Save user message to history
+  await saveMessage(userId, "user", userText)
 
   let quoteData: QuoteData | null = null
 
@@ -43,6 +51,8 @@ export async function handleAiChat(replyToken: string, userText: string) {
 
       if (text) {
         lineMessages.push({ type: "text", text })
+        // Save assistant reply to history
+        await saveMessage(userId, "assistant", text)
       }
 
       if (lineMessages.length > 0) {
@@ -63,7 +73,6 @@ export async function handleAiChat(replyToken: string, userText: string) {
           toolResults.push(result)
           if (result.quoteData) {
             quoteData = result.quoteData
-            console.log("Quote data captured:", quoteData.quote_code)
           }
         }
       }
