@@ -95,6 +95,11 @@ async function main() {
     console.log(`Embedding batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(allChunks.length / BATCH_SIZE)}...`)
     const batchEmbeddings = await embedBatch(texts)
     embeddings.push(...batchEmbeddings)
+    // Rate limit: wait 25s between batches (free tier = 3 RPM)
+    if (i + BATCH_SIZE < allChunks.length) {
+      console.log("  Waiting 25s for rate limit...")
+      await new Promise((r) => setTimeout(r, 25000))
+    }
   }
 
   console.log("\nClearing existing knowledge_chunks...")
