@@ -46,12 +46,11 @@ export async function handleAiChat(replyToken: string, userText: string, userId:
       const lineMessages: LineMessage[] = []
 
       if (quoteData) {
+        // Flex card already shows all quote details — skip text
         lineMessages.push(buildQuoteBubble(quoteData))
-      }
-
-      if (text) {
+        await saveMessage(userId, "assistant", `[報價卡片] ${quoteData.quote_code}`)
+      } else if (text) {
         lineMessages.push({ type: "text", text })
-        // Save assistant reply to history
         await saveMessage(userId, "assistant", text)
       }
 
