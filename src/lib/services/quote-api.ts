@@ -1,3 +1,5 @@
+import { createClient } from "@supabase/supabase-js"
+
 export interface QuoteData {
   quote_code: string
   pricing: { total: number; valid_until: string }
@@ -6,16 +8,24 @@ export interface QuoteData {
   pdf_url?: string
 }
 
-const QUOTE_API_BASE = process.env.QUOTE_API_BASE_URL ?? "https://quote.drone168.com"
+function getSupabaseAdmin() {
+  const url = process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
+  return createClient(url, key)
+}
 
 export async function lookupQuote(quoteCode: string): Promise<QuoteData | null> {
   try {
-    const res = await fetch(`${QUOTE_API_BASE}/api/quote/lookup?code=${encodeURIComponent(quoteCode)}`, {
-      headers: { "Content-Type": "application/json" },
-    })
-    if (!res.ok) return null
-    const data = (await res.json()) as QuoteData
-    return data
+    const supabase = getSupabaseAdmin()
+    const { data, error } = await supabase
+      .from("quotes")
+      .select("quote_code, pricing, time_result, expires_at, pdf_url")
+      .eq("quote_code", quoteCode)
+      .maybeSingle()
+
+    if (error || !data) return null
+    return data as QuoteData
   } catch (err) {
     console.error("Failed to lookup quote:", quoteCode, err)
     return null
