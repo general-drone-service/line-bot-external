@@ -63,6 +63,7 @@ export async function handleAiChat(replyToken: string, userText: string) {
           toolResults.push(result)
           if (result.quoteData) {
             quoteData = result.quoteData
+            console.log("Quote data captured:", quoteData.quote_code)
           }
         }
       }
