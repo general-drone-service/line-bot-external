@@ -1,6 +1,1 @@
 export { handleFollow } from "./welcome"
-export { handleQuoteLookup } from "./quote"
-export { handleBooking } from "./booking"
-export { handleMissionStatus } from "./mission"
-export { handleSupport } from "./support"
-export { handleUnknown } from "./unknown"

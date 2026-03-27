@@ -1,15 +1,8 @@
 import { NextResponse } from "next/server"
 import { verifySignature } from "@/lib/line"
 import type { LineEvent, LineWebhookBody } from "@/lib/line"
-import { detectIntent } from "@/lib/router"
-import {
-  handleFollow,
-  handleQuoteLookup,
-  handleBooking,
-  handleMissionStatus,
-  handleSupport,
-  handleUnknown,
-} from "@/lib/handlers"
+import { handleFollow } from "@/lib/handlers"
+import { handleAiChat } from "@/lib/ai"
 
 export const runtime = "nodejs"
 
@@ -59,25 +52,6 @@ async function handleEvent(event: LineEvent) {
     event.message.text &&
     event.replyToken
   ) {
-    const text = event.message.text
-    const intent = detectIntent(text)
-
-    switch (intent) {
-      case "quote_lookup":
-        await handleQuoteLookup(event.replyToken, text)
-        break
-      case "booking":
-        await handleBooking(event.replyToken)
-        break
-      case "mission_status":
-        await handleMissionStatus(event.replyToken)
-        break
-      case "support":
-        await handleSupport(event.replyToken)
-        break
-      case "unknown":
-        await handleUnknown(event.replyToken)
-        break
-    }
+    await handleAiChat(event.replyToken, event.message.text)
   }
 }
