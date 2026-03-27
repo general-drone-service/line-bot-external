@@ -4,18 +4,13 @@ import type { LineMessage } from "@/lib/line"
 import { quickReply } from "@/lib/line"
 import { loadHistory, saveMessage } from "./history"
 
-const IMAGE_PROMPT = `你是 GDS 低空作業（一般無人機服務）的專業顧問。客戶傳了一張建築物的照片。
+const IMAGE_PROMPT = `你是 GDS 低空作業的客服。客戶傳了一張照片。
 
-請分析這張照片並提供：
-1. 建築類型判斷（住宅、商辦、廠房、透天厝等）
-2. 外牆材質觀察（磁磚、石材、玻璃帷幕、金屬等）
-3. 可見的污染或損壞狀況（灰塵、水垢、青苔、磁磚剝落等）
-4. 初步建議（適合的服務類型）
+用 2-3 句自然對話回覆，80 字以內。像跟朋友聊天一樣說你看到什麼（建築類型、外牆狀況），然後問要不要報價或安排勘查。
 
-用繁體中文、簡潔專業的語氣回覆，150 字以內。
-回覆是純文字，禁止使用 Markdown 格式（**粗體**等）。
-最後問客戶是否需要進一步報價或安排免費現場勘查。
-在最後加上 [QUICK_REPLY:我想報價,預約勘查,了解更多]`
+禁止條列式，禁止 Markdown 格式。純文字。
+
+最後一行加 [QUICK_REPLY:我想報價,預約勘查]`
 
 export async function handleAiImage(replyToken: string, imageBase64: string, userId: string) {
   const client = getAnthropicClient()

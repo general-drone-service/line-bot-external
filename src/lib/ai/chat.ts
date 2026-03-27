@@ -11,13 +11,30 @@ import { loadHistory, saveMessage } from "./history"
 
 const QUICK_REPLY_REGEX = /\[QUICK_REPLY:([^\]]+)\]\s*$/
 
+// Fallback quick reply detection when Haiku forgets the tag
+const FALLBACK_QUICK_REPLIES: [RegExp, string[]][] = [
+  [/哪種服務|哪項服務|需要什麼服務/, ["外牆清洗", "外牆巡檢", "太陽能板清潔"]],
+  [/建築類型|什麼類型的建築|哪種建築/, ["住宅社區", "商辦大樓", "透天厝", "廠房"]],
+  [/平日還是週末|方便的時間/, ["平日", "週末"]],
+  [/住宅.*商辦.*公共|哪種用途/, ["住宅", "商辦", "公共建築"]],
+]
+
 function parseQuickReply(text: string): { cleanText: string; labels: string[] | null } {
   const match = text.match(QUICK_REPLY_REGEX)
-  if (!match) return { cleanText: text, labels: null }
+  if (match) {
+    const cleanText = text.replace(QUICK_REPLY_REGEX, "").trim()
+    const labels = match[1].split(",").map((s) => s.trim()).filter(Boolean)
+    return { cleanText, labels: labels.length > 0 ? labels : null }
+  }
 
-  const cleanText = text.replace(QUICK_REPLY_REGEX, "").trim()
-  const labels = match[1].split(",").map((s) => s.trim()).filter(Boolean)
-  return { cleanText, labels: labels.length > 0 ? labels : null }
+  // Fallback: detect question patterns and auto-add buttons
+  for (const [pattern, labels] of FALLBACK_QUICK_REPLIES) {
+    if (pattern.test(text)) {
+      return { cleanText: text, labels }
+    }
+  }
+
+  return { cleanText: text, labels: null }
 }
 
 export async function handleAiChat(replyToken: string, userText: string, userId: string) {
@@ -83,7 +100,8 @@ export async function handleAiChat(replyToken: string, userText: string, userId:
           const result = await executeTool(
             block.name,
             block.id,
-            block.input as Record<string, unknown>
+            block.input as Record<string, unknown>,
+            userId
           )
           toolResults.push(result)
           if (result.quoteData) {

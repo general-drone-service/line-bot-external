@@ -1,6 +1,8 @@
 import type Anthropic from "@anthropic-ai/sdk"
 import { lookupQuote } from "@/lib/services/quote-api"
 import { searchKnowledge } from "@/lib/knowledge"
+import { requestHumanHandoff } from "@/lib/services/notify"
+import { loadHistory } from "./history"
 import type { QuoteData } from "@/lib/services/quote-api"
 
 export const TOOLS: Anthropic.Tool[] = [
@@ -34,6 +36,21 @@ export const TOOLS: Anthropic.Tool[] = [
       required: ["query"],
     },
   },
+  {
+    name: "request_human",
+    description:
+      "轉接真人客服。當你無法回答客戶的問題、客戶明確要求跟真人說話、或遇到需要人工處理的情況時使用。",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        reason: {
+          type: "string",
+          description: "轉接原因摘要",
+        },
+      },
+      required: ["reason"],
+    },
+  },
 ]
 
 export interface ToolResult {
@@ -45,7 +62,8 @@ export interface ToolResult {
 export async function executeTool(
   name: string,
   toolUseId: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  userId?: string
 ): Promise<ToolResult> {
   switch (name) {
     case "lookup_quote": {
@@ -81,6 +99,23 @@ export async function executeTool(
         .map((c) => `[${c.source}${c.heading ? " > " + c.heading : ""}]\n${c.content}`)
         .join("\n\n---\n\n")
       return { tool_use_id: toolUseId, content: text }
+    }
+
+    case "request_human": {
+      const reason = input.reason as string
+      const history = userId ? await loadHistory(userId) : []
+      const lastMessages = history.slice(-6).map((m) => `${m.role}: ${m.content}`)
+
+      await requestHumanHandoff({
+        userId: userId ?? "unknown",
+        reason,
+        lastMessages,
+      })
+
+      return {
+        tool_use_id: toolUseId,
+        content: "已通知客服團隊，他們會盡快與客戶聯繫。",
+      }
     }
 
     default:
