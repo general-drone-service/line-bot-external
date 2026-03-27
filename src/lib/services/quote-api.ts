@@ -9,8 +9,8 @@ export interface QuoteData {
 }
 
 function getSupabaseAdmin() {
-  const url = process.env.SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const url = process.env.SUPABASE_URL ?? process.env.QUOTE_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.QUOTE_SUPABASE_SERVICE_ROLE_KEY
   if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
   return createClient(url, key)
 }
@@ -24,7 +24,11 @@ export async function lookupQuote(quoteCode: string): Promise<QuoteData | null> 
       .eq("quote_code", quoteCode)
       .maybeSingle()
 
-    if (error || !data) return null
+    if (error) {
+      console.error("Supabase query error:", error.message)
+      return null
+    }
+    if (!data) return null
     return data as QuoteData
   } catch (err) {
     console.error("Failed to lookup quote:", quoteCode, err)
