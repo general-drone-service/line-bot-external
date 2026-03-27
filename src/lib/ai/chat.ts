@@ -4,9 +4,21 @@ import { TOOLS, executeTool } from "./tools"
 import type { ToolResult } from "./tools"
 import { reply } from "@/lib/line"
 import type { LineMessage } from "@/lib/line"
+import { quickReply } from "@/lib/line"
 import { buildQuoteBubble } from "@/lib/flex"
 import type { QuoteData } from "@/lib/services/quote-api"
 import { loadHistory, saveMessage } from "./history"
+
+const QUICK_REPLY_REGEX = /\[QUICK_REPLY:([^\]]+)\]\s*$/
+
+function parseQuickReply(text: string): { cleanText: string; labels: string[] | null } {
+  const match = text.match(QUICK_REPLY_REGEX)
+  if (!match) return { cleanText: text, labels: null }
+
+  const cleanText = text.replace(QUICK_REPLY_REGEX, "").trim()
+  const labels = match[1].split(",").map((s) => s.trim()).filter(Boolean)
+  return { cleanText, labels: labels.length > 0 ? labels : null }
+}
 
 export async function handleAiChat(replyToken: string, userText: string, userId: string) {
   const client = getAnthropicClient()
@@ -41,17 +53,21 @@ export async function handleAiChat(replyToken: string, userText: string, userId:
           textParts.push(block.text)
         }
       }
-      const text = textParts.join("")
+      const rawText = textParts.join("")
 
       const lineMessages: LineMessage[] = []
 
       if (quoteData) {
-        // Flex card already shows all quote details — skip text
         lineMessages.push(buildQuoteBubble(quoteData))
         await saveMessage(userId, "assistant", `[報價卡片] ${quoteData.quote_code}`)
-      } else if (text) {
-        lineMessages.push({ type: "text", text })
-        await saveMessage(userId, "assistant", text)
+      } else if (rawText) {
+        const { cleanText, labels } = parseQuickReply(rawText)
+        const msg: LineMessage = { type: "text", text: cleanText }
+        if (labels) {
+          msg.quickReply = quickReply(labels)
+        }
+        lineMessages.push(msg)
+        await saveMessage(userId, "assistant", cleanText)
       }
 
       if (lineMessages.length > 0) {

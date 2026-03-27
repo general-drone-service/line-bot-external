@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
-import { verifySignature } from "@/lib/line"
+import { verifySignature, getChannelAccessToken } from "@/lib/line"
 import type { LineEvent, LineWebhookBody } from "@/lib/line"
 import { handleFollow } from "@/lib/handlers"
-import { handleAiChat } from "@/lib/ai"
+import { handleAiChat, handleAiImage } from "@/lib/ai"
 
 export const runtime = "nodejs"
 
@@ -46,13 +46,37 @@ async function handleEvent(event: LineEvent) {
     return
   }
 
-  if (
-    event.type === "message" &&
-    event.message?.type === "text" &&
-    event.message.text &&
-    event.replyToken
-  ) {
-    const userId = event.source?.userId ?? "unknown"
+  if (event.type !== "message" || !event.replyToken) return
+
+  const userId = event.source?.userId ?? "unknown"
+
+  if (event.message?.type === "text" && event.message.text) {
     await handleAiChat(event.replyToken, event.message.text, userId)
+    return
+  }
+
+  if (event.message?.type === "image" && event.message.id) {
+    const imageData = await fetchLineImage(event.message.id)
+    if (imageData) {
+      await handleAiImage(event.replyToken, imageData, userId)
+    }
+  }
+}
+
+async function fetchLineImage(messageId: string): Promise<string | null> {
+  try {
+    const token = getChannelAccessToken()
+    const res = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) {
+      console.error("Failed to fetch LINE image:", res.status)
+      return null
+    }
+    const buffer = await res.arrayBuffer()
+    return Buffer.from(buffer).toString("base64")
+  } catch (err) {
+    console.error("Error fetching LINE image:", err)
+    return null
   }
 }

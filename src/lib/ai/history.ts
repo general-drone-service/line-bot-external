@@ -12,8 +12,8 @@ export interface ChatMessage {
   content: string
 }
 
-const MAX_HISTORY = 10 // keep last 10 messages (5 turns)
-const HISTORY_TTL_HOURS = 1 // only load messages from last 1 hour
+const MAX_HISTORY = 20 // keep last 20 messages (10 turns)
+const HISTORY_TTL_HOURS = 24 // load messages from last 24 hours
 
 export async function loadHistory(userId: string): Promise<ChatMessage[]> {
   const supabase = getSupabaseAdmin()
