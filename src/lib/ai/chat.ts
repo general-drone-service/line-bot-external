@@ -10,7 +10,8 @@ import type { QuoteData } from "@/lib/services/quote-api"
 export async function handleAiChat(replyToken: string, userText: string) {
   const client = getAnthropicClient()
 
-  const messages: { role: "user" | "assistant"; content: unknown }[] = [
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const messages: any[] = [
     { role: "user", content: userText },
   ]
 
@@ -22,14 +23,17 @@ export async function handleAiChat(replyToken: string, userText: string) {
       max_tokens: 512,
       system: SYSTEM_PROMPT,
       tools: TOOLS,
-      messages: messages as Parameters<typeof client.messages.create>[0]["messages"],
+      messages,
     })
 
     if (response.stop_reason === "end_turn") {
-      const text = response.content
-        .filter((block): block is { type: "text"; text: string } => block.type === "text")
-        .map((block) => block.text)
-        .join("")
+      const textParts: string[] = []
+      for (const block of response.content) {
+        if (block.type === "text") {
+          textParts.push(block.text)
+        }
+      }
+      const text = textParts.join("")
 
       const lineMessages: LineMessage[] = []
 
@@ -48,17 +52,18 @@ export async function handleAiChat(replyToken: string, userText: string) {
     }
 
     if (response.stop_reason === "tool_use") {
-      const toolUseBlocks = response.content.filter(
-        (block): block is { type: "tool_use"; id: string; name: string; input: Record<string, unknown> } =>
-          block.type === "tool_use"
-      )
-
       const toolResults: ToolResult[] = []
-      for (const block of toolUseBlocks) {
-        const result = await executeTool(block.name, block.id, block.input)
-        toolResults.push(result)
-        if (result.quoteData) {
-          quoteData = result.quoteData
+      for (const block of response.content) {
+        if (block.type === "tool_use") {
+          const result = await executeTool(
+            block.name,
+            block.id,
+            block.input as Record<string, unknown>
+          )
+          toolResults.push(result)
+          if (result.quoteData) {
+            quoteData = result.quoteData
+          }
         }
       }
 
