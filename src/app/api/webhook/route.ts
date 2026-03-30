@@ -3,6 +3,8 @@ import { verifySignature, getChannelAccessToken } from "@/lib/line"
 import type { LineEvent, LineWebhookBody } from "@/lib/line"
 import { handleFollow } from "@/lib/handlers"
 import { handleAiChat, handleAiImage } from "@/lib/ai"
+import { isBotPaused } from "@/lib/services/bot-pause"
+import { isDuringBusinessHours } from "@/lib/services/business-hours"
 
 export const runtime = "nodejs"
 
@@ -49,6 +51,18 @@ async function handleEvent(event: LineEvent) {
   if (event.type !== "message" || !event.replyToken) return
 
   const userId = event.source?.userId ?? "unknown"
+
+  // Skip auto-reply during business hours (humans are available)
+  if (isDuringBusinessHours()) {
+    console.log(`[bot] Skipping auto-reply for ${userId} — during business hours`)
+    return
+  }
+
+  // Skip auto-reply if bot is paused for this user (human handoff active)
+  if (await isBotPaused(userId)) {
+    console.log(`[bot] Skipping auto-reply for ${userId} — bot paused (human handoff)`)
+    return
+  }
 
   if (event.message?.type === "text" && event.message.text) {
     await handleAiChat(event.replyToken, event.message.text, userId)

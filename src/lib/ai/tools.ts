@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk"
 import { lookupQuote } from "@/lib/services/quote-api"
 import { searchKnowledge } from "@/lib/knowledge"
 import { requestHumanHandoff } from "@/lib/services/notify"
+import { pauseBot } from "@/lib/services/bot-pause"
 import { loadHistory } from "./history"
 import type { QuoteData } from "@/lib/services/quote-api"
 
@@ -112,9 +113,14 @@ export async function executeTool(
         lastMessages,
       })
 
+      // Auto-pause bot so it doesn't interfere with human agent
+      if (userId) {
+        await pauseBot(userId)
+      }
+
       return {
         tool_use_id: toolUseId,
-        content: "已通知客服團隊，他們會盡快與客戶聯繫。",
+        content: "已通知客服團隊，他們會盡快與客戶聯繫。機器人已暫停自動回覆。",
       }
     }
 

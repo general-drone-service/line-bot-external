@@ -19,12 +19,13 @@ export async function loadHistory(userId: string): Promise<ChatMessage[]> {
   const supabase = getSupabaseAdmin()
   const cutoff = new Date(Date.now() - HISTORY_TTL_HOURS * 60 * 60 * 1000).toISOString()
 
+  // Fetch the most recent N messages (descending), then reverse to chronological order
   const { data, error } = await supabase
     .from("chat_history")
     .select("role, content")
     .eq("user_id", userId)
     .gte("created_at", cutoff)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(MAX_HISTORY)
 
   if (error) {
@@ -32,7 +33,7 @@ export async function loadHistory(userId: string): Promise<ChatMessage[]> {
     return []
   }
 
-  return (data ?? []) as ChatMessage[]
+  return ((data ?? []) as ChatMessage[]).reverse()
 }
 
 export async function saveMessage(userId: string, role: "user" | "assistant", content: string) {
