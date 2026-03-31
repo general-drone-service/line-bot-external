@@ -51,17 +51,20 @@ async function handleEvent(event: LineEvent) {
   if (event.type !== "message" || !event.replyToken) return
 
   const userId = event.source?.userId ?? "unknown"
+  const text = event.message?.type === "text" ? event.message.text ?? "" : ""
+  const isQuoteLookup = /Q-\w{8}-\w{3}/i.test(text)
 
-  // Skip auto-reply during business hours (humans are available)
-  if (isDuringBusinessHours()) {
-    console.log(`[bot] Skipping auto-reply for ${userId} — during business hours`)
-    return
-  }
+  // Quote lookup is available 24/7; other auto-replies are skipped during business hours
+  if (!isQuoteLookup) {
+    if (isDuringBusinessHours()) {
+      console.log(`[bot] Skipping auto-reply for ${userId} — during business hours`)
+      return
+    }
 
-  // Skip auto-reply if bot is paused for this user (human handoff active)
-  if (await isBotPaused(userId)) {
-    console.log(`[bot] Skipping auto-reply for ${userId} — bot paused (human handoff)`)
-    return
+    if (await isBotPaused(userId)) {
+      console.log(`[bot] Skipping auto-reply for ${userId} — bot paused (human handoff)`)
+      return
+    }
   }
 
   if (event.message?.type === "text" && event.message.text) {
