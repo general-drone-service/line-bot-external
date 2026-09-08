@@ -34,3 +34,7 @@ next-env.d.ts
 # vercel
 .vercel
 .env*.local
+/dist/
+.vinext/
+.wrangler/
+.dev.vars

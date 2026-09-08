@@ -69,7 +69,7 @@ async function embedBatch(texts: string[]): Promise<number[][]> {
 }
 
 async function main() {
-  const knowledgeDir = path.resolve(__dirname, "../knowledge")
+  const knowledgeDir = path.resolve(import.meta.dirname, "../knowledge")
   const files = fs.readdirSync(knowledgeDir).filter((f) => f.endsWith(".md"))
 
   if (files.length === 0) {
