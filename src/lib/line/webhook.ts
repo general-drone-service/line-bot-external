@@ -8,6 +8,7 @@ import {
   type TrackingStore,
 } from "@/lib/tracking/store"
 import { isTerminalGatewayError } from "@/lib/botdb/gateway"
+import { describeError } from "@/lib/errors"
 import { LineApiError } from "./send"
 import { verifySignature } from "./signature"
 import type { LineEvent, LineWebhookBody } from "./types"
@@ -123,7 +124,7 @@ async function replyToEvent(store: TrackingStore, accountId: string, event: Line
       status = "pending"
       ok = false
     }
-    console.error("LINE webhook: event handling failed", eventId, event.type, status, err)
+    console.error("LINE webhook: event handling failed", eventId, event.type, status, describeError(err))
   }
 
   try {
