@@ -6,14 +6,14 @@
 
 **Architecture:** 先修 webhook 的安全與錯誤語意（P0），再在 POST 事件迴圈前整批寫入追蹤事件並以事件 ID 去重（P1），最後以 outbox 推送 CRM（P2-bot）。純判斷邏輯放 `src/lib/tracking/`，webhook 主流程從 route 抽到 `src/lib/line/webhook.ts` 以便測試（Next route 檔不能匯出額外名稱）。
 
-**Tech Stack:** Next 15 app router。**正式環境實際在 Vercel**（`line-bot-external.drone168.com` → Vercel 專案 `line-bot-external`，main push 即部署 production）；repo 另有 vinext → Cloudflare Workers 設定。Supabase（quote-drone168，從表推定）、node:test + tsx（已安裝，不加依賴）。
+**Tech Stack:** Next 15 app router，經 vinext 部署到 **Cloudflare Workers（正式環境，使用者 2026-10-16 決定）**。目前網域暫時還由 Vercel 服務，切換步驟見 `docs/cloudflare-cutover.md`；main push 會同時部署 Vercel 和 Workers，直到 Vercel 停用為止。Supabase（quote-drone168，從表推定）、node:test + tsx（已安裝，不加依賴）。
 
 **Spec:** pm 方案 v3 `line-tracking-plan.md`（範圍以它為準）；細節參考原規格 `~/Downloads/review-line-tracking.md` 中 v3 採用的部分。
 
 ## Global Constraints
 
 - 不加新依賴；測試用 `node --import tsx --test`。
-- 不 merge、不部署、不 apply 遠端 migration、不改 Cloudflare／Vercel／LINE 設定；commit／push 分支／開 PR 已獲授權。**merge 到 main = Vercel 自動部署 production**。
+- 不 merge、不部署、不 apply 遠端 migration、不改 Cloudflare／Vercel／LINE 設定；commit／push 分支／開 PR 已獲授權。**merge 到 main = 自動部署 production**（Workers Builds；切換完成前 Vercel 也會部署）。
 - 追蹤不存聊天全文、附件或 reply token。
 - 簽章：缺 secret／長度不符／錯誤一律拒絕，不得跳過驗證繼續處理。
 - LINE 重送目前**關閉**（使用者確認）：P0 可單獨上線；**重送要等 P1 去重上線並驗證後才開**。
@@ -130,8 +130,8 @@
 
 ### Task 6: token 與 `/line/start`
 - `src/lib/tracking/token.ts`：`L-` + 32 位 hex（HMAC-SHA256(`LINE_TRACKING_TOKEN_SECRET`, 冪等鍵)），不可能被報價編號 regex 誤判；DB 只存 sha256。交給 handler 前會先去掉 token，訊息只剩 token 時改成「您好」。
-- `POST /api/line/touch`（`src/lib/tracking/touch.ts`）：source_key 格式白名單＋DB 必須是啟用中的來源；目的地固定是官方帳號（不會變成開放轉址）；TTL 用 `LINE_TRACKING_TOKEN_TTL_DAYS`（預設 30 天）。只接受 `application/json`（415）、body ≤ 1KB（413）、每個來源每分鐘最多 120 個新 touch（429；同一冪等鍵重試不受限）。規格寫明第一階段不收集 IP，所以 per-IP 節流放在平台 WAF（待決定）。
-- `GET /line/start?source=`：只顯示內容、不寫 DB（A01）；按下按鈕才 POST，冪等鍵在每次頁面瀏覽時產生（A02）；有開啟失敗時的複製訊息與加好友備援。**桌面 QR 未做**（需要新依賴，待決定）。
+- `POST /api/line/touch`（`src/lib/tracking/touch.ts`）：source_key 格式白名單＋DB 必須是啟用中的來源；目的地固定是官方帳號（不會變成開放轉址）；TTL 用 `LINE_TRACKING_TOKEN_TTL_DAYS`（預設 30 天）。只接受 `application/json`（415）、body ≤ 1KB（413）、每個來源每分鐘最多 120 個新 touch（429；同一冪等鍵重試不受限）。per-IP 節流：pm 決定先不做。
+- `GET /line/start?source=`：只顯示內容、不寫 DB（A01）；按下按鈕才 POST，冪等鍵在每次頁面瀏覽時產生（A02）；有開啟失敗時的複製訊息與加好友備援。**桌面 QR：pm 決定先不做。**
 
 ### Task 7: 撤回
 - 在 SQL `process_event` 裡處理：寫 tombstone、撤銷由該訊息綁定的 touch、原訊息標成 `retracted`、尚未送出的 CRM 推送改 `cancelled`；比 unsend 晚到的原訊息也是 `retracted`。
@@ -145,14 +145,15 @@
 - 租約與送出 claim：每次 lease 配一個新 token。每筆送出前做原子 claim（`pending/sending → sending`，token 相符且租約未過期），這是和 unsend 取消競爭的唯一決勝點：取消先成功就不送；claim 先成功就視為已開始外送，之後 unsend 不會再標成取消。嘗試過的列（attempts > 0）也不能取消，因為可能已經送達。finish 必須是 `sending` 且 token 相符，舊 worker 晚到的結果會被忽略。worker 中途死掉留下的 `sending`，租約到期後會重新 lease 並重送（CRM 依 botEventRef 冪等）。
 - 時間預算：Supabase RPC 一律 5 秒 timeout；一批 10 筆；30 秒後不再開始新的一筆（單筆最壞 23 秒）；cron route `maxDuration=60`。
 - 開關：要同時有 `CRM_PUSH_ENABLED=true`、`CRM_INGEST_URL`、`LINE_INQUIRY_INGEST_SECRET` 才會推送，否則 outbox 原封不動。
-- 排程：spike 成功（自訂 `worker/index.ts` 的 `scheduled` 在本機 wrangler 觸發可用）。但正式環境在 Vercel，所以另加 `GET /api/cron/crm-outbox`（`Bearer $CRON_SECRET`）＋ `vercel.json` cron（每 5 分鐘）。兩邊共用 `flushCrmOutbox`，lease 機制保證同時跑也安全。Vercel 方案頻率限制待確認。
+- 排程：**以 Workers cron 為準**：`wrangler.jsonc` 的 `triggers.crons`（每 5 分鐘）加上 `worker/index.ts` 的 `scheduled()`，spike 在本機 wrangler 已實測可用。`vercel.json` 加 `/api/cron/crm-outbox` 只是切換期間的過渡；推送開關只在 Cloudflare 設。切換穩定後刪除這兩個檔案（見 `docs/cloudflare-cutover.md` §5）。兩邊共用 `flushCrmOutbox`，租約和 claim 保證同時跑也安全。
 
 ## 上線步驟（每步都要使用者核准）
 
-1. **P0（PR #2）**：Vercel 設 `BOT_PAUSE_API_TOKEN` → merge（＝部署 production）→ 用簽章錯的請求確認回 401。LINE 重送維持關閉。
+1. **P0（PR #2，已 merge e6f2525）**：Cloudflare 已設 `BOT_PAUSE_API_TOKEN`。在正式網域切到 Workers 之前，Vercel 也要設，否則 `/api/bot-pause` 回 503。LINE 重送維持關閉。
 2. **P1 程式**：merge（＝部署）。這時 `LINE_TRACKING_ENABLED` 還沒設，行為和 P0 完全相同（不碰追蹤表），所以和 migration 誰先誰後都安全。
-3. **P1 DB 與開關**：在 quote-drone168 apply `003_line_tracking.sql`（先確認正式環境的 `SUPABASE_URL` 確實指向這個專案）→ 新增正式廣告來源（`enabled=false`），另建一個專用測試來源（`enabled=true, is_test=true`）→ Vercel 設 `LINE_TRACKING_TOKEN_SECRET`（必要時加 `LINE_TEST_USER_IDS`）→ 最後設 `LINE_TRACKING_ENABLED=true`，並**建立新的 production deployment**（Vercel 的環境變數只對新的 deployment 生效）→ 用專用測試帳號走 `/line/start?source=<測試來源>` → 送出 → 檢查 events／touches／health。
-4. 驗證去重之後，才在 LINE console **開啟重送**。
-5. 把一個來源設 `enabled=true`，換掉一支廣告入口試行。
-6. **P2**：CRM ingest 上線後，Vercel 設 `CRM_INGEST_URL`、`LINE_INQUIRY_INGEST_SECRET`、`CRON_SECRET`，最後才設 `CRM_PUSH_ENABLED=true`，然後 redeploy 讓新值生效。
-7. 回復方式（依序）：① 先在 LINE console 關閉重送（關掉追蹤就失去去重）；② 來源 `enabled=false`（立即生效，因為存在 DB）；③ 移除 `LINE_TRACKING_ENABLED`／`CRM_PUSH_ENABLED`，並**建立新的 production deployment**（只移除 env 不會影響已在跑的 deployment）；④ 用簽章錯誤的探測請求，以及 touch API 回 503，確認開關真的關了。要 rollback 時，必須選一個確定追蹤和推送都是關閉的版本，「前一個 deployment」不一定符合。資料表保留，不用刪表回復。
+3. **切換到 Cloudflare**：照 `docs/cloudflare-cutover.md` 做（secret、workers.dev 驗證、先切 LINE webhook 再換 DNS）。之後的開關**只在 Cloudflare 設**。
+4. **P1 DB 與開關**：在 quote-drone168 apply `003_line_tracking.sql`（先確認 Worker 的 `SUPABASE_URL` 確實指向這個專案）→ 新增正式廣告來源（`enabled=false`），另建一個專用測試來源（`enabled=true, is_test=true`）→ Cloudflare secret 設 `LINE_TRACKING_TOKEN_SECRET`（必要時加 `LINE_TEST_USER_IDS`）→ 最後設 `LINE_TRACKING_ENABLED=true`（改 secret 會立即建立新版本並部署）→ 用專用測試帳號走 `/line/start?source=<測試來源>` → 送出 → 檢查 events／touches／health。
+5. 驗證去重之後，才在 LINE console **開啟重送**。
+6. 把一個來源設 `enabled=true`，換掉一支廣告入口試行。
+7. **P2**：CRM ingest 上線後，Cloudflare secret 設 `CRM_INGEST_URL`、`LINE_INQUIRY_INGEST_SECRET`，最後才設 `CRM_PUSH_ENABLED=true`（Workers cron 每 5 分鐘一次，不需要 `CRON_SECRET`）。
+8. 回復方式（依序）：① 先在 LINE console 關閉重送（關掉追蹤就失去去重）；② 來源 `enabled=false`（立即生效，因為存在 DB）；③ 刪除 Cloudflare 的 `LINE_TRACKING_ENABLED`／`CRM_PUSH_ENABLED` secret（會立即部署新版本）；④ 用 touch API 回 503 確認開關真的關了。要回到舊程式時，用 Worker → Deployments 的 rollback，並選一個確定追蹤和推送都是關閉的版本。資料表保留，不用刪表回復。
