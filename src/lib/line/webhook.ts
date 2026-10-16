@@ -1,10 +1,24 @@
 import { NextResponse } from "next/server"
+import { extractToken, hashToken, stripToken } from "@/lib/tracking/token"
+import {
+  passthroughTrackingStore,
+  supabaseTrackingStore,
+  trackingEnabled,
+  type ReplyStatus,
+  type TrackingStore,
+} from "@/lib/tracking/store"
+import { LineApiError } from "./send"
 import { verifySignature } from "./signature"
 import type { LineEvent, LineWebhookBody } from "./types"
 
+/** What the customer-service handler did: replied/pushed, or deliberately did nothing (terminal). */
+export type EventOutcome = "sent" | "skipped"
+export type EventHandler = (event: LineEvent) => Promise<EventOutcome>
+
 export async function handleWebhookRequest(
   request: Request,
-  handleEvent: (event: LineEvent) => Promise<void>
+  handleEvent: EventHandler,
+  store: TrackingStore = trackingEnabled() ? supabaseTrackingStore : passthroughTrackingStore
 ): Promise<Response> {
   const rawBody = await request.text()
 
@@ -31,20 +45,102 @@ export async function handleWebhookRequest(
   if (!Array.isArray(body?.events)) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 })
   }
+  // LINE console "Verify" sends no events
+  if (body.events.length === 0) return NextResponse.json({ ok: true })
 
-  // Keep handling the rest of the batch, but never report success for a failed event
+  const accountId = body.destination
+  if (
+    typeof accountId !== "string" ||
+    !accountId ||
+    body.events.some((e) => typeof e?.webhookEventId !== "string" || typeof e.timestamp !== "number")
+  ) {
+    return NextResponse.json({ error: "Invalid body" }, { status: 400 })
+  }
+
+  // Persist the whole batch before any reply: on failure nothing was sent, so LINE redelivery is safe
+  try {
+    await store.recordEvents(accountId, body.events)
+  } catch (err) {
+    console.error("LINE webhook: failed to record events", err)
+    return NextResponse.json({ error: "Tracking unavailable" }, { status: 500 })
+  }
+
+  const testUsers = testUserIds()
   let failed = 0
   for (const event of body.events) {
-    try {
-      await handleEvent(event)
-    } catch (err) {
-      failed++
-      console.error("Error handling event:", event?.type, err)
-    }
+    if (!(await trackEvent(store, accountId, event, testUsers))) failed++
+    if (!(await replyToEvent(store, accountId, event, handleEvent))) failed++
   }
 
   if (failed > 0) {
     return NextResponse.json({ error: "Event handling failed", failed }, { status: 500 })
   }
   return NextResponse.json({ ok: true })
+}
+
+async function trackEvent(store: TrackingStore, accountId: string, event: LineEvent, testUsers: Set<string>) {
+  const text = event.message?.type === "text" ? event.message.text ?? "" : ""
+  const token = extractToken(text)
+  try {
+    await store.processEvent(
+      accountId,
+      event.webhookEventId!,
+      token ? hashToken(token) : null,
+      testUsers.has(event.source?.userId ?? "")
+    )
+    return true
+  } catch (err) {
+    console.error("LINE webhook: tracking failed", event.webhookEventId, err)
+    return false
+  }
+}
+
+async function replyToEvent(store: TrackingStore, accountId: string, event: LineEvent, handleEvent: EventHandler) {
+  const eventId = event.webhookEventId!
+  let attempt: number
+  try {
+    attempt = await store.claimReply(accountId, eventId)
+  } catch (err) {
+    console.error("LINE webhook: reply claim failed", eventId, err)
+    return false
+  }
+  // Already handled (or being handled) by an earlier delivery
+  if (attempt === 0) return true
+
+  let status: ReplyStatus
+  let ok = true
+  try {
+    status = await handleEvent(withoutToken(event))
+  } catch (err) {
+    if (err instanceof LineApiError && err.status >= 400 && err.status < 500) {
+      // 4xx is terminal (e.g. used/expired reply token). After an earlier failed attempt the
+      // first send may actually have reached the user, so that case is only "unknown".
+      status = attempt > 1 ? "unknown" : "failed"
+    } else {
+      // 5xx / network / handler error: release for LINE redelivery
+      status = "pending"
+      ok = false
+    }
+    console.error("LINE webhook: event handling failed", eventId, event.type, status, err)
+  }
+
+  try {
+    await store.finishReply(accountId, eventId, status)
+  } catch (err) {
+    console.error("LINE webhook: failed to store reply status", eventId, status, err)
+    return false
+  }
+  return ok
+}
+
+function withoutToken(event: LineEvent): LineEvent {
+  const text = event.message?.type === "text" ? event.message.text : undefined
+  if (!text) return event
+  const stripped = stripToken(text)
+  if (stripped === text) return event
+  return { ...event, message: { ...event.message!, text: stripped || "您好" } }
+}
+
+function testUserIds() {
+  return new Set((process.env.LINE_TEST_USER_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean))
 }

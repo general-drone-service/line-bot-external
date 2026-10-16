@@ -2,7 +2,7 @@ import { push } from "@/lib/line"
 import type { LineMessage } from "@/lib/line"
 import { quickReply } from "@/lib/line"
 
-export async function handleFollow(userId: string) {
+export async function handleFollow(userId: string, retryKey?: string) {
   const messages: LineMessage[] = [
     {
       type: "text",
@@ -16,5 +16,5 @@ export async function handleFollow(userId: string) {
       quickReply: quickReply(["我想報價", "服務項目", "外牆巡檢", "聯絡方式"]),
     },
   ]
-  await push(userId, messages)
+  await push(userId, messages, retryKey)
 }
