@@ -16,6 +16,8 @@ async function callLineApi(endpoint: string, body: Record<string, unknown>) {
   if (!res.ok) {
     const text = await res.text()
     console.error(`LINE API ${endpoint} failed:`, res.status, text)
+    // Surface to the webhook so a failed send is not acknowledged to LINE as success
+    throw new Error(`LINE API ${endpoint} failed: ${res.status}`)
   }
 }
 
