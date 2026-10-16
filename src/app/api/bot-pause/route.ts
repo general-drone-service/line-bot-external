@@ -1,5 +1,5 @@
-import crypto from "node:crypto"
 import { NextResponse } from "next/server"
+import { rejectUnlessBearer } from "@/lib/services/bearer-auth"
 import { pauseBot, resumeBot, isBotPaused } from "@/lib/services/bot-pause"
 
 /**
@@ -11,16 +11,7 @@ import { pauseBot, resumeBot, isBotPaused } from "@/lib/services/bot-pause"
  */
 
 function rejectUnauthorized(request: Request): Response | null {
-  const token = process.env.BOT_PAUSE_API_TOKEN
-  if (!token) {
-    return NextResponse.json({ error: "Bot pause API not configured" }, { status: 503 })
-  }
-  const given = Buffer.from(request.headers.get("authorization") ?? "")
-  const expected = Buffer.from(`Bearer ${token}`)
-  if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-  return null
+  return rejectUnlessBearer(request, process.env.BOT_PAUSE_API_TOKEN, "Bot pause API")
 }
 
 export async function GET(request: Request) {

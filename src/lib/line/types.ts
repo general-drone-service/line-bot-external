@@ -1,5 +1,9 @@
 export interface LineEvent {
   type: string
+  mode?: string
+  timestamp?: number
+  webhookEventId?: string
+  deliveryContext?: { isRedelivery: boolean }
   replyToken?: string
   source?: { type: string; userId?: string; groupId?: string; roomId?: string }
   message?: {
@@ -8,9 +12,12 @@ export interface LineEvent {
     id?: string
     contentProvider?: { type: string }
   }
+  unsend?: { messageId: string }
+  follow?: { isUnblocked: boolean }
 }
 
 export interface LineWebhookBody {
+  destination?: string
   events: LineEvent[]
 }
 

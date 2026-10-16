@@ -18,5 +18,10 @@ test("line-bot-external has a reproducible Cloudflare Worker build", () => {
   assert.equal(wrangler.name, "line-bot-external");
   assert.equal(wrangler.compatibility_date, "2026-09-08");
   assert.ok(wrangler.compatibility_flags.includes("nodejs_compat"));
-  assert.equal(wrangler.main, "vinext/server/fetch-handler");
+  // Custom entry delegates fetch to vinext and adds the CRM outbox cron
+  assert.equal(wrangler.main, "./worker/index.ts");
+  assert.deepEqual(wrangler.triggers.crons, ["*/5 * * * *"]);
+  const entry = readFileSync(resolve(root, "worker/index.ts"), "utf8");
+  assert.match(entry, /from "vinext\/server\/fetch-handler"/);
+  assert.match(entry, /scheduled/);
 });
