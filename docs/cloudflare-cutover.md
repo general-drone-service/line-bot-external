@@ -1,5 +1,7 @@
 # line-bot-external：正式環境從 Vercel 切到 Cloudflare Workers
 
+> 執行順序與資料庫搬遷已合併到 `docs/cutover-runbook.md`，兩者有出入時以 runbook 為準。本文件保留背景與細節。
+
 決定（2026-10-16）：line bot 正式環境維持在 Cloudflare Workers；CRM 留在 Vercel。
 現況：`line-bot-external.drone168.com` 目前是一筆 **DNS only（灰雲）CNAME → `*.vercel-dns-016.com`**，由 Vercel 專案 `line-bot-external` 服務。同一個 GitHub repo 也接了 Cloudflare Workers Builds，main 的每次 push 都會**同時**部署到 Vercel production 和 Worker `line-bot-external` 的 production（workers.dev）。
 
