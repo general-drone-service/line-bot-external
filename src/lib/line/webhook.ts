@@ -13,7 +13,7 @@ import type { LineEvent, LineWebhookBody } from "./types"
 
 /** What the customer-service handler did: replied/pushed, or deliberately did nothing (terminal). */
 export type EventOutcome = "sent" | "skipped"
-export type EventHandler = (event: LineEvent) => Promise<EventOutcome>
+export type EventHandler = (event: LineEvent, accountId: string) => Promise<EventOutcome>
 
 export async function handleWebhookRequest(
   request: Request,
@@ -110,7 +110,7 @@ async function replyToEvent(store: TrackingStore, accountId: string, event: Line
   let status: ReplyStatus
   let ok = true
   try {
-    status = await handleEvent(withoutToken(event))
+    status = await handleEvent(withoutToken(event), accountId)
   } catch (err) {
     if (err instanceof LineApiError && err.status >= 400 && err.status < 500) {
       // 4xx is terminal (e.g. used/expired reply token). After an earlier failed attempt the

@@ -3,6 +3,7 @@ import { reply } from "@/lib/line"
 import type { LineMessage } from "@/lib/line"
 import { quickReply } from "@/lib/line"
 import { loadHistory, saveMessage } from "./history"
+import type { ChatTurn } from "./history"
 
 const IMAGE_PROMPT = `你是 GDS 低空作業的客服。客戶傳了一張照片。
 
@@ -12,11 +13,11 @@ const IMAGE_PROMPT = `你是 GDS 低空作業的客服。客戶傳了一張照�
 
 最後一行加 [QUICK_REPLY:我想報價,預約勘查]`
 
-export async function handleAiImage(replyToken: string, imageBase64: string, userId: string) {
+export async function handleAiImage(replyToken: string, imageBase64: string, turn: ChatTurn) {
   const client = getAnthropicClient()
 
-  const history = await loadHistory(userId)
-  await saveMessage(userId, "user", "[客戶傳送了一張照片]")
+  const history = await loadHistory(turn.userId)
+  await saveMessage(turn, "user", "[客戶傳送了一張照片]")
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const messages: any[] = [
@@ -37,6 +38,7 @@ export async function handleAiImage(replyToken: string, imageBase64: string, use
     },
   ]
 
+  let rawText: string
   try {
     const response = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
@@ -51,24 +53,23 @@ export async function handleAiImage(replyToken: string, imageBase64: string, use
         textParts.push(block.text)
       }
     }
-    const rawText = textParts.join("")
-
-    // Parse quick reply
-    const qrMatch = rawText.match(/\[QUICK_REPLY:([^\]]+)\]\s*$/)
-    const cleanText = qrMatch ? rawText.replace(/\[QUICK_REPLY:[^\]]+\]\s*$/, "").trim() : rawText
-    const labels = qrMatch ? qrMatch[1].split(",").map((s) => s.trim()).filter(Boolean) : null
-
-    const msg: LineMessage = { type: "text", text: cleanText }
-    if (labels) {
-      msg.quickReply = quickReply(labels)
-    }
-
-    await saveMessage(userId, "assistant", cleanText)
-    await reply(replyToken, [msg])
+    rawText = textParts.join("")
   } catch (err) {
     console.error("Image analysis error:", err)
-    await reply(replyToken, [
-      { type: "text", text: "抱歉，圖片分析暫時無法使用。您可以直接描述建築狀況，我來幫您評估！" },
-    ])
+    rawText = "抱歉，圖片分析暫時無法使用。您可以直接描述建築狀況，我來幫您評估！"
   }
+
+  // Parse quick reply
+  const qrMatch = rawText.match(/\[QUICK_REPLY:([^\]]+)\]\s*$/)
+  const cleanText = qrMatch ? rawText.replace(/\[QUICK_REPLY:[^\]]+\]\s*$/, "").trim() : rawText
+  const labels = qrMatch ? qrMatch[1].split(",").map((s) => s.trim()).filter(Boolean) : null
+
+  const msg: LineMessage = { type: "text", text: cleanText }
+  if (labels) {
+    msg.quickReply = quickReply(labels)
+  }
+
+  // Save before replying: a history write failure must fail the event before anything is sent
+  await saveMessage(turn, "assistant", cleanText)
+  await reply(replyToken, [msg])
 }

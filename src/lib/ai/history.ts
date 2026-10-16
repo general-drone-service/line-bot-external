@@ -1,48 +1,38 @@
-import { createClient } from "@supabase/supabase-js"
+import { botDbs, chatMessageId, insertMessageWithFallback } from "@/lib/botdb"
+import type { ChatRow } from "@/lib/botdb"
 
-function getSupabaseAdmin() {
-  const url = process.env.SUPABASE_URL ?? process.env.QUOTE_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.QUOTE_SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
-  return createClient(url, key)
-}
+export type ChatMessage = ChatRow
 
-export interface ChatMessage {
-  role: "user" | "assistant"
-  content: string
+/** The LINE event a conversation turn belongs to; gives its history rows stable ids. */
+export interface ChatTurn {
+  accountId: string
+  webhookEventId: string
+  userId: string
 }
 
 const MAX_HISTORY = 20 // keep last 20 messages (10 turns)
 const HISTORY_TTL_HOURS = 24 // load messages from last 24 hours
 
 export async function loadHistory(userId: string): Promise<ChatMessage[]> {
-  const supabase = getSupabaseAdmin()
   const cutoff = new Date(Date.now() - HISTORY_TTL_HOURS * 60 * 60 * 1000).toISOString()
-
-  // Fetch the most recent N messages (descending), then reverse to chronological order
-  const { data, error } = await supabase
-    .from("chat_history")
-    .select("role, content")
-    .eq("user_id", userId)
-    .gte("created_at", cutoff)
-    .order("created_at", { ascending: false })
-    .limit(MAX_HISTORY)
-
-  if (error) {
-    console.error("Failed to load chat history:", error.message)
+  try {
+    // Most recent N (descending), reversed to chronological order
+    return (await botDbs().primary.recentMessages(userId, cutoff, MAX_HISTORY)).reverse()
+  } catch (err) {
+    console.error("Failed to load chat history:", (err as Error).message)
     return []
   }
-
-  return ((data ?? []) as ChatMessage[]).reverse()
 }
 
-export async function saveMessage(userId: string, role: "user" | "assistant", content: string) {
-  const supabase = getSupabaseAdmin()
-  const { error } = await supabase
-    .from("chat_history")
-    .insert({ user_id: userId, role, content })
-
-  if (error) {
-    console.error("Failed to save chat message:", error.message)
-  }
+/**
+ * Throws when the row could not be stored anywhere, so the webhook returns non-2xx.
+ * Call it before reply(): a failure must never follow a reply the customer already got.
+ */
+export async function saveMessage(turn: ChatTurn, role: ChatMessage["role"], content: string) {
+  await insertMessageWithFallback(botDbs(), {
+    id: chatMessageId(turn.accountId, turn.webhookEventId, role),
+    user_id: turn.userId,
+    role,
+    content,
+  })
 }

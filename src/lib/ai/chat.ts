@@ -5,9 +5,8 @@ import type { ToolResult } from "./tools"
 import { reply } from "@/lib/line"
 import type { LineMessage } from "@/lib/line"
 import { quickReply } from "@/lib/line"
-import { buildQuoteBubble } from "@/lib/flex"
-import type { QuoteData } from "@/lib/services/quote-api"
 import { loadHistory, saveMessage } from "./history"
+import type { ChatTurn } from "./history"
 
 const QUICK_REPLY_REGEX = /\[QUICK_REPLY:([^\]]+)\]\s*$/
 
@@ -41,11 +40,11 @@ function parseQuickReply(text: string): { cleanText: string; labels: string[] | 
   return { cleanText: text, labels: null }
 }
 
-export async function handleAiChat(replyToken: string, userText: string, userId: string) {
+export async function handleAiChat(replyToken: string, userText: string, turn: ChatTurn) {
   const client = getAnthropicClient()
 
   // Load conversation history
-  const history = await loadHistory(userId)
+  const history = await loadHistory(turn.userId)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const messages: any[] = [
@@ -54,9 +53,7 @@ export async function handleAiChat(replyToken: string, userText: string, userId:
   ]
 
   // Save user message to history
-  await saveMessage(userId, "user", userText)
-
-  let quoteData: QuoteData | null = null
+  await saveMessage(turn, "user", userText)
 
   for (let i = 0; i < 3; i++) {
     const response = await client.messages.create({
@@ -78,17 +75,14 @@ export async function handleAiChat(replyToken: string, userText: string, userId:
 
       const lineMessages: LineMessage[] = []
 
-      if (quoteData) {
-        lineMessages.push(buildQuoteBubble(quoteData))
-        await saveMessage(userId, "assistant", `[報價卡片] ${quoteData.quote_code}`)
-      } else if (rawText) {
+      if (rawText) {
         const { cleanText, labels } = parseQuickReply(rawText)
         const msg: LineMessage = { type: "text", text: cleanText }
         if (labels) {
           msg.quickReply = quickReply(labels)
         }
         lineMessages.push(msg)
-        await saveMessage(userId, "assistant", cleanText)
+        await saveMessage(turn, "assistant", cleanText)
       }
 
       if (lineMessages.length > 0) {
@@ -105,12 +99,9 @@ export async function handleAiChat(replyToken: string, userText: string, userId:
             block.name,
             block.id,
             block.input as Record<string, unknown>,
-            userId
+            turn.userId
           )
           toolResults.push(result)
-          if (result.quoteData) {
-            quoteData = result.quoteData
-          }
         }
       }
 
@@ -130,7 +121,7 @@ export async function handleAiChat(replyToken: string, userText: string, userId:
     break
   }
 
-  await reply(replyToken, [
-    { type: "text", text: "抱歉，目前無法處理您的問題。請稍後再試，或聯繫客服 02-7733-7678。" },
-  ])
+  const fallback = "抱歉，目前無法處理您的問題。請稍後再試，或聯繫客服 02-7733-7678。"
+  await saveMessage(turn, "assistant", fallback)
+  await reply(replyToken, [{ type: "text", text: fallback }])
 }
