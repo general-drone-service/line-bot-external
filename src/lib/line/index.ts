@@ -1,4 +1,5 @@
 export { verifySignature } from "./signature"
+export { handleWebhookRequest } from "./webhook"
 export { reply, push } from "./send"
 export { getChannelAccessToken, getChannelSecret } from "./client"
 export type { LineEvent, LineWebhookBody, LineMessage, LineTextMessage, LineFlexMessage, QuickReply } from "./types"

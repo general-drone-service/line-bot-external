@@ -1,6 +1,5 @@
-import { NextResponse } from "next/server"
-import { verifySignature, getChannelAccessToken } from "@/lib/line"
-import type { LineEvent, LineWebhookBody } from "@/lib/line"
+import { getChannelAccessToken, handleWebhookRequest } from "@/lib/line"
+import type { LineEvent } from "@/lib/line"
 import { handleFollow } from "@/lib/handlers"
 import { handleAiChat, handleAiImage } from "@/lib/ai"
 import { isBotPaused } from "@/lib/services/bot-pause"
@@ -9,37 +8,7 @@ import { isDuringBusinessHours } from "@/lib/services/business-hours"
 export const runtime = "nodejs"
 
 export async function POST(request: Request) {
-  try {
-    const rawBody = await request.text()
-
-    const signature = request.headers.get("x-line-signature")
-    if (!signature) {
-      return NextResponse.json({ error: "Missing signature" }, { status: 401 })
-    }
-
-    try {
-      if (!verifySignature(rawBody, signature)) {
-        return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
-      }
-    } catch {
-      console.warn("LINE signature verification skipped (missing secret?)")
-    }
-
-    const body = JSON.parse(rawBody) as LineWebhookBody
-
-    for (const event of body.events) {
-      try {
-        await handleEvent(event)
-      } catch (err) {
-        console.error("Error handling event:", event.type, err)
-      }
-    }
-
-    return NextResponse.json({ ok: true })
-  } catch (err) {
-    console.error("LINE webhook error:", err)
-    return NextResponse.json({ error: "Internal error" }, { status: 500 })
-  }
+  return handleWebhookRequest(request, handleEvent)
 }
 
 async function handleEvent(event: LineEvent) {
@@ -74,9 +43,8 @@ async function handleEvent(event: LineEvent) {
 
   if (event.message?.type === "image" && event.message.id) {
     const imageData = await fetchLineImage(event.message.id)
-    if (imageData) {
-      await handleAiImage(event.replyToken, imageData, userId)
-    }
+    if (!imageData) throw new Error(`Failed to fetch LINE image ${event.message.id}`)
+    await handleAiImage(event.replyToken, imageData, userId)
   }
 }
 
