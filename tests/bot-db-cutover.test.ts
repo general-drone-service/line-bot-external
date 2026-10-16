@@ -310,3 +310,59 @@ test("the image apology fallback is not sent when it cannot be stored", async ()
   assert.equal((await webhook(signed([image]))).status, 500)
   assert.equal(sent(REPLY), 0)
 })
+
+test("an Anthropic API error is logged with status, type and request id but no customer text", async () => {
+  setBotDbsForTest({ primary: fakeDb().db, fallback: null })
+  routes[ANTHROPIC] = () =>
+    Response.json(
+      { type: "error", error: { type: "authentication_error", message: "invalid x-api-key" }, request_id: "req_test_1" },
+      { status: 401, headers: { "request-id": "req_test_1" } }
+    )
+  const logged: unknown[][] = []
+  const realError = console.error
+  console.error = (...args: unknown[]) => void logged.push(args)
+  try {
+    assert.equal((await webhook(signed([text("e1", "想洗外牆的秘密內容")]))).status, 500)
+  } finally {
+    console.error = realError
+  }
+  const line = logged.find((a) => a[0] === "LINE webhook: event handling failed")
+  assert.ok(line, "handler failure is logged")
+  assert.deepEqual(line.at(-1), { status: 401, type: "authentication_error", requestId: "req_test_1" })
+  assert.doesNotMatch(JSON.stringify(logged), /秘密內容|test-anthropic/)
+  assert.equal(sent(REPLY), 0)
+})
+
+test("connection-level SDK errors are told apart without their cause", async () => {
+  const { describeError } = await import("@/lib/errors")
+  const Anthropic = (await import("@anthropic-ai/sdk")).default
+  const cause = new Error("secret customer text")
+  assert.deepEqual(describeError(new Anthropic.APIConnectionTimeoutError()), { status: null, type: "timeout", requestId: null })
+  assert.deepEqual(describeError(new Anthropic.APIConnectionError({ cause })), { status: null, type: "connection_error", requestId: null })
+  assert.deepEqual(describeError(new Anthropic.APIUserAbortError()), { status: null, type: "aborted", requestId: null })
+  const plain = new Error("x")
+  assert.equal(describeError(plain), plain)
+})
+
+test("a handoff followed by a failing AI call logs no customer details anywhere", async () => {
+  setBotDbsForTest({ primary: fakeDb().db, fallback: null })
+  let turn = 0
+  routes[ANTHROPIC] = () =>
+    turn++ === 0
+      ? Response.json({
+          id: "msg_0", type: "message", role: "assistant", model: "claude-haiku-4-5-20251001",
+          content: [{ type: "tool_use", id: "tu1", name: "request_human", input: { reason: "客戶地址台北市秘密路1號" } }],
+          stop_reason: "tool_use", stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 },
+        })
+      : Response.json({ type: "error", error: { type: "invalid_request_error", message: "echo: 秘密路" } }, { status: 400 })
+  const logged: unknown[][] = []
+  const saved = { log: console.log, warn: console.warn, error: console.error }
+  console.log = console.warn = console.error = (...args: unknown[]) => void logged.push(args)
+  try {
+    assert.equal((await webhook(signed([text("e1", "我住秘密路，請找真人")]))).status, 500)
+  } finally {
+    Object.assign(console, saved)
+  }
+  assert.ok(logged.some((a) => a[0] === "Human handoff requested for user:"))
+  assert.doesNotMatch(JSON.stringify(logged), /秘密/)
+})

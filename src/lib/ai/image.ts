@@ -3,6 +3,7 @@ import { reply } from "@/lib/line"
 import type { LineMessage } from "@/lib/line"
 import { quickReply } from "@/lib/line"
 import { loadHistory, saveMessage } from "./history"
+import { describeError } from "@/lib/errors"
 import type { ChatTurn } from "./history"
 
 const IMAGE_PROMPT = `你是 GDS 低空作業的客服。客戶傳了一張照片。
@@ -55,7 +56,7 @@ export async function handleAiImage(replyToken: string, imageBase64: string, tur
     }
     rawText = textParts.join("")
   } catch (err) {
-    console.error("Image analysis error:", err)
+    console.error("Image analysis error:", describeError(err))
     rawText = "抱歉，圖片分析暫時無法使用。您可以直接描述建築狀況，我來幫您評估！"
   }
 

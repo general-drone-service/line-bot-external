@@ -105,7 +105,8 @@ async function notifyLine(payload: HandoffPayload) {
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 export async function requestHumanHandoff(payload: HandoffPayload) {
-  console.log("Human handoff requested:", payload.reason, "for user:", payload.userId)
+  // reason is AI-written from the conversation and may hold customer details; keep it out of logs
+  console.log("Human handoff requested for user:", payload.userId)
 
   // Fire all configured channels in parallel
   await Promise.allSettled([
