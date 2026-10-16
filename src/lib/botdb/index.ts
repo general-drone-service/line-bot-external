@@ -1,5 +1,6 @@
 import crypto from "node:crypto"
 import { createClient } from "@supabase/supabase-js"
+import { gatewayBotDb, gatewayConfigured } from "./gateway"
 
 /**
  * The bot's own tables (chat_history, bot_pause, knowledge_chunks) behind one interface, so the
@@ -90,15 +91,14 @@ export function supabaseBotDb(url: string, key: string): BotDb {
 
 export interface BotDbs {
   primary: BotDb
-  /** Where chat_history writes go once the primary is sealed; null until the CRM gateway exists. */
+  /** Where chat_history writes go once the primary is sealed; null when the other side is not configured. */
   fallback: BotDb | null
 }
 
-function quoteDb(): BotDb {
+function quoteDb(): BotDb | null {
   const url = process.env.SUPABASE_URL ?? process.env.QUOTE_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.QUOTE_SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
-  return supabaseBotDb(url, key)
+  return url && key ? supabaseBotDb(url, key) : null
 }
 
 let override: BotDbs | null = null
@@ -108,9 +108,23 @@ export function setBotDbsForTest(dbs: BotDbs | null) {
   override = dbs
 }
 
-// shortcut: only quote-drone168 exists; add the CRM gateway client and the BOT_DB=quote|crm switch here.
+/**
+ * BOT_DB picks where the bot reads and writes: "quote" (default, quote-drone168 via service role)
+ * or "crm" (the line-bot-data gateway). The other side, when configured, takes sealed writes.
+ */
 export function botDbs(): BotDbs {
-  return override ?? { primary: quoteDb(), fallback: null }
+  if (override) return override
+  const target = process.env.BOT_DB ?? "quote"
+  if (target !== "quote" && target !== "crm") throw new Error(`Invalid BOT_DB=${target} (quote | crm)`)
+  const quote = quoteDb()
+  const crm = gatewayConfigured() ? gatewayBotDb : null
+  const primary = target === "crm" ? crm : quote
+  if (!primary) {
+    throw new Error(
+      target === "crm" ? "BOT_DB=crm needs LINE_BOT_DATA_URL and LINE_BOT_DATA_SECRET" : "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY"
+    )
+  }
+  return { primary, fallback: target === "crm" ? quote : crm }
 }
 
 /** Writes to the primary; if the cutover sealed it, writes the same row to the other side. */

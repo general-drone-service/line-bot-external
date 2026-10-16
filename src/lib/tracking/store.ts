@@ -1,5 +1,5 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import type { LineEvent } from "@/lib/line"
+import { callGateway } from "@/lib/botdb/gateway"
 import { isInquiryEvent } from "./inquiry"
 
 export type ReplyStatus = "pending" | "skipped" | "sent" | "failed" | "unknown"
@@ -50,7 +50,7 @@ export interface CrmOutboxStore {
   ): Promise<void>
 }
 
-/** Row shape for line_tracking_record_events; keeps only what tracking needs (no text, no reply token). */
+/** Row shape for tracking.recordEvents; keeps only what tracking needs (no text, no reply token). */
 export function toEventRow(event: LineEvent) {
   return {
     webhook_event_id: event.webhookEventId,
@@ -66,28 +66,10 @@ export function toEventRow(event: LineEvent) {
   }
 }
 
-let client: SupabaseClient | null = null
-const RPC_TIMEOUT_MS = 5_000
-
-function getSupabaseAdmin() {
-  if (client) return client
-  const url = process.env.SUPABASE_URL ?? process.env.QUOTE_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.QUOTE_SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
-  // Bound every tracking RPC so a slow database cannot outlive the webhook or cron time budget
-  client = createClient(url, key, {
-    global: { fetch: (input, init) => fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(RPC_TIMEOUT_MS) }) },
-  })
-  return client
-}
-
-async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
-  const { data, error } = await getSupabaseAdmin().rpc(fn, args)
-  if (error) throw new Error(`${fn} failed: ${error.message}`)
-  return data as T
-}
-
-/** Tracking is off until the migration is applied and LINE_TRACKING_ENABLED=true (also the kill switch). */
+/**
+ * Tracking is off until the CRM line_bot schema and gateway are live and LINE_TRACKING_ENABLED=true
+ * (also the kill switch). Tracking lives only in the CRM, behind the line-bot-data gateway.
+ */
 export function trackingEnabled() {
   return process.env.LINE_TRACKING_ENABLED === "true"
 }
@@ -104,23 +86,26 @@ export const passthroughTrackingStore: TrackingStore = {
   async finishReply() {},
 }
 
-export const supabaseTrackingStore: TrackingStore = {
+export const crmTrackingStore: TrackingStore = {
   async recordEvents(accountId, events) {
-    await rpc("line_tracking_record_events", { p_account_id: accountId, p_events: events.map(toEventRow) })
+    await callGateway("tracking.recordEvents", { p_account_id: accountId, p_events: events.map(toEventRow) })
   },
   processEvent(accountId, webhookEventId, tokenHash, isTestUser) {
-    return rpc<string>("line_tracking_process_event", {
+    return callGateway<string>("tracking.processEvent", {
       p_account_id: accountId,
       p_webhook_event_id: webhookEventId,
       p_token_hash: tokenHash,
       p_is_test_user: isTestUser,
     })
   },
-  claimReply(accountId, webhookEventId) {
-    return rpc<number>("line_tracking_claim_reply", { p_account_id: accountId, p_webhook_event_id: webhookEventId })
+  async claimReply(accountId, webhookEventId) {
+    const attempt = await callGateway<unknown>("tracking.claimReply", { p_account_id: accountId, p_webhook_event_id: webhookEventId })
+    // A malformed claim must not be read as "go ahead": only 0 skips, so anything else would reply
+    if (!Number.isInteger(attempt) || (attempt as number) < 0) throw new Error(`tracking.claimReply: invalid attempt ${attempt}`)
+    return attempt as number
   },
   async finishReply(accountId, webhookEventId, status) {
-    await rpc("line_tracking_finish_reply", {
+    await callGateway("tracking.finishReply", {
       p_account_id: accountId,
       p_webhook_event_id: webhookEventId,
       p_status: status,
@@ -128,28 +113,29 @@ export const supabaseTrackingStore: TrackingStore = {
   },
 }
 
-export const supabaseTouchStore: TouchStore = {
+export const crmTouchStore: TouchStore = {
   async createTouch(sourceKey, idempotencyKey, tokenHash, ttlDays, maxPerMinute) {
-    const rows = await rpc<{ touch_id: string; expires_at: string }[]>("line_tracking_create_touch", {
+    // Gateway answers 409 with message "idempotency_conflict" / "rate_limited"; GatewayError carries it
+    const touch = await callGateway<{ touch_id: string; expires_at: string } | null>("tracking.createTouch", {
       p_source_key: sourceKey,
       p_idempotency_key: idempotencyKey,
       p_token_hash: tokenHash,
       p_ttl_days: ttlDays,
       p_max_per_minute: maxPerMinute,
     })
-    return rows[0] ? { expiresAt: rows[0].expires_at } : null
+    return touch ? { expiresAt: touch.expires_at } : null
   },
 }
 
-export const supabaseCrmOutboxStore: CrmOutboxStore = {
+export const crmOutboxStore: CrmOutboxStore = {
   leaseCrm(limit, leaseSeconds) {
-    return rpc<CrmOutboxRow[]>("line_tracking_lease_crm", { p_limit: limit, p_lease_seconds: leaseSeconds })
+    return callGateway<CrmOutboxRow[]>("tracking.leaseCrm", { p_limit: limit, p_lease_seconds: leaseSeconds })
   },
   claimSend(eventId, leaseToken) {
-    return rpc<boolean>("line_tracking_claim_crm_send", { p_event_id: eventId, p_lease_token: leaseToken })
+    return callGateway<boolean>("tracking.claimCrmSend", { p_event_id: eventId, p_lease_token: leaseToken })
   },
   async finishCrm(eventId, leaseToken, result, maxAttempts) {
-    await rpc("line_tracking_finish_crm", {
+    await callGateway("tracking.finishCrm", {
       p_event_id: eventId,
       p_lease_token: leaseToken,
       p_ok: result.ok,

@@ -6,6 +6,8 @@ import { retryKeyFor } from "@/lib/line"
 
 const SECRET = "test-channel-secret"
 const SUPABASE = "https://supabase.test"
+const GATEWAY = "https://crm.test/functions/v1/line-bot-data"
+const GATEWAY_SECRET = "test-gateway-secret"
 const realFetch = globalThis.fetch
 const savedEnv = { ...process.env }
 
@@ -17,6 +19,8 @@ beforeEach(() => {
   // Force "outside business hours" so message events reach the handlers
   process.env.BUSINESS_HOURS_DAYS = "7"
   process.env.LINE_TRACKING_ENABLED = "true"
+  process.env.LINE_BOT_DATA_URL = GATEWAY
+  process.env.LINE_BOT_DATA_SECRET = GATEWAY_SECRET
 })
 
 afterEach(() => {
@@ -27,7 +31,7 @@ afterEach(() => {
 type Handler = (url: string, init: RequestInit | undefined) => Response | Promise<Response>
 
 /**
- * Intercepts every outbound call. Supabase tracking RPCs get a minimal in-memory implementation;
+ * Intercepts every outbound call. Gateway tracking actions get a minimal in-memory implementation;
  * `routes` handles LINE (and anything else) by URL, and unexpected URLs fail the test.
  */
 function mockNetwork(routes: Record<string, Handler>) {
@@ -36,23 +40,27 @@ function mockNetwork(routes: Record<string, Handler>) {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     calls.push({ url, init })
-    const rpc = url.match(/^https:\/\/supabase\.test\/rest\/v1\/rpc\/(\w+)/)?.[1]
-    if (rpc) {
-      const args = JSON.parse(String(init?.body))
-      switch (rpc) {
-        case "line_tracking_record_events":
+    if (url === GATEWAY) {
+      const raw = String(init?.body)
+      const headers = new Headers(init?.headers)
+      const ts = headers.get("x-drone168-timestamp")
+      const expected = crypto.createHmac("sha256", GATEWAY_SECRET).update(`${ts}.${raw}`).digest("hex")
+      if (headers.get("x-drone168-signature") !== `sha256=${expected}`) return Response.json({ error: "Invalid signature" }, { status: 401 })
+      const { action, args } = JSON.parse(raw)
+      switch (action) {
+        case "tracking.recordEvents":
           for (const e of args.p_events) if (!reply.has(e.webhook_event_id)) reply.set(e.webhook_event_id, "pending")
-          return new Response(null, { status: 204 })
-        case "line_tracking_process_event":
-          return Response.json("no_token")
-        case "line_tracking_claim_reply": {
-          if (reply.get(args.p_webhook_event_id) !== "pending") return Response.json(0)
+          return Response.json({ data: null })
+        case "tracking.processEvent":
+          return Response.json({ data: "no_token" })
+        case "tracking.claimReply": {
+          if (reply.get(args.p_webhook_event_id) !== "pending") return Response.json({ data: 0 })
           reply.set(args.p_webhook_event_id, "sending")
-          return Response.json(1)
+          return Response.json({ data: 1 })
         }
-        case "line_tracking_finish_reply":
+        case "tracking.finishReply":
           reply.set(args.p_webhook_event_id, args.p_status)
-          return new Response(null, { status: 204 })
+          return Response.json({ data: null })
       }
     }
     if (url.startsWith(`${SUPABASE}/rest/v1/bot_pause`)) return Response.json([], { status: 200 })
@@ -60,7 +68,12 @@ function mockNetwork(routes: Record<string, Handler>) {
     if (!handler) throw new Error(`unexpected fetch ${url}`)
     return handler(url, init)
   }) as typeof fetch
-  return { calls, reply, rpcArgs: (fn: string) => calls.filter((c) => c.url.endsWith(`/rpc/${fn}`)).map((c) => JSON.parse(String(c.init?.body))) }
+  const gatewayCalls = () => calls.filter((c) => c.url === GATEWAY).map((c) => JSON.parse(String(c.init?.body)))
+  return {
+    calls,
+    reply,
+    rpcArgs: (action: string) => gatewayCalls().filter((b) => b.action === action).map((b) => b.args),
+  }
 }
 
 function signedRequest(events: unknown[]) {
@@ -100,7 +113,7 @@ test("with tracking switched off the webhook never calls the tracking database (
   const net = mockNetwork({ [PUSH]: () => Response.json({}) })
   const res = await POST(signedRequest([follow("f1", "U1")]))
   assert.equal(res.status, 200)
-  assert.deepEqual(net.calls.filter((c) => c.url.includes("/rpc/")), [])
+  assert.deepEqual(net.calls.filter((c) => c.url === GATEWAY), [])
   assert.deepEqual(pushedTo(net.calls), ["U1"])
 })
 
@@ -108,23 +121,25 @@ test("records the batch with only tracking fields before replying", async () => 
   const net = mockNetwork({ [PUSH]: () => Response.json({}) })
   const res = await POST(signedRequest([follow("f1", "U1")]))
   assert.equal(res.status, 200)
-  const [record] = net.rpcArgs("line_tracking_record_events")
+  const [record] = net.rpcArgs("tracking.recordEvents")
   assert.equal(record.p_account_id, "Ubot")
   assert.deepEqual(record.p_events, [{
     webhook_event_id: "f1", event_type: "follow", message_type: null, source_type: "user",
     timestamp_ms: 1760600000000, is_redelivery: false, is_unblocked: true, line_user_id: "U1",
     message_id: null, is_inquiry: false,
   }])
-  const order = net.calls.map((c) => c.url.split("/").pop())
-  assert.ok(order.indexOf("line_tracking_record_events") < order.indexOf("push"))
-  assert.deepEqual(net.rpcArgs("line_tracking_finish_reply").map((a) => a.p_status), ["sent"])
+  const order = net.calls.map((c) => (c.url === GATEWAY ? JSON.parse(String(c.init?.body)).action : c.url.split("/").pop()))
+  assert.ok(order.indexOf("tracking.recordEvents") < order.indexOf("push"))
+  assert.deepEqual(net.rpcArgs("tracking.finishReply").map((a) => a.p_status), ["sent"])
 })
 
 test("tracking database down returns 500 and sends nothing", async () => {
   const net = mockNetwork({ [PUSH]: () => Response.json({}) })
   const mocked = globalThis.fetch
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    if (String(input).endsWith("/rpc/line_tracking_record_events")) return Response.json({ message: "down" }, { status: 503 })
+    if (String(input) === GATEWAY && JSON.parse(String(init?.body)).action === "tracking.recordEvents") {
+      return Response.json({ error: { code: null, message: "down" } }, { status: 500 })
+    }
     return mocked(input, init)
   }) as typeof fetch
   const res = await POST(signedRequest([follow("f1", "U1")]))

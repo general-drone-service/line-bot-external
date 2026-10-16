@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { supabaseTouchStore, trackingEnabled, type TouchStore } from "./store"
+import { crmTouchStore, trackingEnabled, type TouchStore } from "./store"
 import { deriveToken, hashToken, lineChatUrl, prefillMessage } from "./token"
 
 const SOURCE_KEY_RE = /^[a-z0-9_]{1,64}$/
@@ -17,7 +17,7 @@ function json(body: unknown, status: number) {
  * POST { source, idempotencyKey } → { url, message }. Only enabled sources create a touch, and the
  * destination is always the official account, so this cannot be used as an open redirect.
  */
-export async function handleTouchRequest(request: Request, store: TouchStore = supabaseTouchStore): Promise<Response> {
+export async function handleTouchRequest(request: Request, store: TouchStore = crmTouchStore): Promise<Response> {
   // JSON only: a cross-site <form> or text/plain POST cannot create touches without a CORS preflight
   if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
     return json({ error: "Unsupported content type" }, 415)

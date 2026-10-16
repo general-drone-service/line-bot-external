@@ -98,7 +98,7 @@ test("tracking switched off returns 503 without touching the database", async ()
 })
 
 test("idempotency key reused for another source returns 409", async () => {
-  const { s } = store(new Error("line_tracking_create_touch failed: idempotency_conflict"))
+  const { s } = store(new Error("line-bot-data tracking.createTouch -> 409: idempotency_conflict"))
   const res = await handleTouchRequest(post({ source: "meta_tech_facility", idempotencyKey: KEY }), s)
   assert.equal(res.status, 409)
 })
@@ -137,13 +137,13 @@ test("body limit counts UTF-8 bytes, not characters", async () => {
 })
 
 test("source over its per-minute cap returns 429", async () => {
-  const { s } = store(new Error("line_tracking_create_touch failed: rate_limited"))
+  const { s } = store(new Error("line-bot-data tracking.createTouch -> 409: rate_limited"))
   const res = await handleTouchRequest(post({ source: "meta_facility_202610", idempotencyKey: KEY }), s)
   assert.equal(res.status, 429)
 })
 
 test("database failure returns 500", async () => {
-  const { s } = store(new Error("line_tracking_create_touch failed: connection refused"))
+  const { s } = store(new Error("line-bot-data tracking.createTouch -> 500: connection refused"))
   const res = await handleTouchRequest(post({ source: "meta_facility_202610", idempotencyKey: KEY }), s)
   assert.equal(res.status, 500)
 })

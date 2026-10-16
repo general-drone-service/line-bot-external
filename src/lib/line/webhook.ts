@@ -2,11 +2,12 @@ import { NextResponse } from "next/server"
 import { extractToken, hashToken, stripToken } from "@/lib/tracking/token"
 import {
   passthroughTrackingStore,
-  supabaseTrackingStore,
+  crmTrackingStore,
   trackingEnabled,
   type ReplyStatus,
   type TrackingStore,
 } from "@/lib/tracking/store"
+import { isTerminalGatewayError } from "@/lib/botdb/gateway"
 import { LineApiError } from "./send"
 import { verifySignature } from "./signature"
 import type { LineEvent, LineWebhookBody } from "./types"
@@ -18,7 +19,7 @@ export type EventHandler = (event: LineEvent, accountId: string) => Promise<Even
 export async function handleWebhookRequest(
   request: Request,
   handleEvent: EventHandler,
-  store: TrackingStore = trackingEnabled() ? supabaseTrackingStore : passthroughTrackingStore
+  store: TrackingStore = trackingEnabled() ? crmTrackingStore : passthroughTrackingStore
 ): Promise<Response> {
   const rawBody = await request.text()
 
@@ -91,7 +92,8 @@ async function trackEvent(store: TrackingStore, accountId: string, event: LineEv
     return true
   } catch (err) {
     console.error("LINE webhook: tracking failed", event.webhookEventId, err)
-    return false
+    // Invalid data stays invalid on redelivery; tracking is best-effort next to the reply
+    return isTerminalGatewayError(err)
   }
 }
 
@@ -112,9 +114,9 @@ async function replyToEvent(store: TrackingStore, accountId: string, event: Line
   try {
     status = await handleEvent(withoutToken(event), accountId)
   } catch (err) {
-    if (err instanceof LineApiError && err.status >= 400 && err.status < 500) {
-      // 4xx is terminal (e.g. used/expired reply token). After an earlier failed attempt the
-      // first send may actually have reached the user, so that case is only "unknown".
+    if ((err instanceof LineApiError && err.status >= 400 && err.status < 500) || isTerminalGatewayError(err)) {
+      // LINE 4xx (e.g. used/expired reply token) and gateway 422 are terminal. After an earlier
+      // failed attempt the first send may actually have reached the user, so that case is only "unknown".
       status = attempt > 1 ? "unknown" : "failed"
     } else {
       // 5xx / network / handler error: release for LINE redelivery

@@ -1,6 +1,6 @@
-import crypto from "node:crypto"
 import { getChannelAccessToken } from "@/lib/line"
-import { supabaseCrmOutboxStore, type CrmOutboxRow, type CrmOutboxStore } from "./store"
+import { drone168SignedHeaders } from "@/lib/botdb/gateway"
+import { crmOutboxStore, type CrmOutboxRow, type CrmOutboxStore } from "./store"
 
 // Worst case per row: profile 5s + claim RPC 5s + ingest 8s + finish RPC 5s = 23s (RPCs time out
 // at 5s in store.ts). Rows start only before the 30s deadline, so a run ends by ~53s plus the
@@ -50,16 +50,10 @@ async function fetchDisplayName(userId: string): Promise<string | null> {
 
 async function pushRow(row: CrmOutboxRow, displayName: string | null, url: string, secret: string) {
   const body = JSON.stringify(toIngestPayload(row, displayName))
-  const timestamp = Math.floor(Date.now() / 1000).toString()
-  const signature = crypto.createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex")
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Drone168-Timestamp": timestamp,
-        "X-Drone168-Signature": `sha256=${signature}`,
-      },
+      headers: drone168SignedHeaders(secret, body),
       body,
       signal: AbortSignal.timeout(INGEST_TIMEOUT_MS),
     })
@@ -74,7 +68,7 @@ async function pushRow(row: CrmOutboxRow, displayName: string | null, url: strin
  * Pushes due LINE inquiries to CRM. Safe to run concurrently (rows are leased) and repeatedly
  * (CRM ingest is idempotent on botEventRef). Off unless CRM_PUSH_ENABLED=true and configured.
  */
-export async function flushCrmOutbox(store: CrmOutboxStore = supabaseCrmOutboxStore, now: () => number = Date.now) {
+export async function flushCrmOutbox(store: CrmOutboxStore = crmOutboxStore, now: () => number = Date.now) {
   const url = process.env.CRM_INGEST_URL
   const secret = process.env.LINE_INQUIRY_INGEST_SECRET
   if (process.env.CRM_PUSH_ENABLED !== "true" || !url || !secret) return { skipped: "disabled" as const }
