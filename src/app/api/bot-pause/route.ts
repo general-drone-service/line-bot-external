@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { rejectUnlessBearer } from "@/lib/services/bearer-auth"
 import { pauseBot, resumeBot, isBotPaused } from "@/lib/services/bot-pause"
+import { CutoverFrozenError } from "@/lib/botdb"
 
 /**
  * Bot pause management API for customer service agents.
@@ -47,15 +48,22 @@ export async function POST(request: Request) {
     )
   }
 
-  if (action === "pause") {
-    await pauseBot(userId, hours)
-    return NextResponse.json({ userId, paused: true, message: "Bot paused" })
+  if (action !== "pause" && action !== "resume") {
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 })
   }
 
-  if (action === "resume") {
-    await resumeBot(userId)
-    return NextResponse.json({ userId, paused: false, message: "Bot resumed" })
+  try {
+    if (action === "pause") await pauseBot(userId, hours)
+    else await resumeBot(userId)
+  } catch (err) {
+    if (err instanceof CutoverFrozenError) {
+      return NextResponse.json({ error: "Database cutover in progress, retry later" }, { status: 503 })
+    }
+    console.error(`Bot pause API: ${action} failed`, err)
+    return NextResponse.json({ error: `Failed to ${action}` }, { status: 500 })
   }
 
-  return NextResponse.json({ error: "Invalid action" }, { status: 400 })
+  return action === "pause"
+    ? NextResponse.json({ userId, paused: true, message: "Bot paused" })
+    : NextResponse.json({ userId, paused: false, message: "Bot resumed" })
 }
