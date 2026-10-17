@@ -17,9 +17,6 @@ export async function GET(request: Request) {
     await getAnthropicClient().models.retrieve(CHAT_MODEL)
     return NextResponse.json({ status: 200 })
   } catch (err) {
-    // Other errors get a fixed type: a malformed key ends up inside the SDK's header error message
-    const described = describeError(err)
-    const body = described instanceof Error ? { status: null, type: "internal_error", requestId: null } : described
-    return NextResponse.json(body, { status: 502 })
+    return NextResponse.json(describeError(err), { status: 502 })
   }
 }
