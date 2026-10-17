@@ -15,7 +15,7 @@ test("a malformed key is never echoed back", async () => {
   const res = await GET(new Request("https://example.test/api/health/anthropic", { headers: { authorization: "Bearer test-bot-pause-token" } }))
   const text = await res.text()
   assert.equal(res.status, 502)
-  assert.deepEqual(JSON.parse(text), { status: null, type: "internal_error", requestId: null })
+  assert.deepEqual(JSON.parse(text), { status: null, type: "TypeError", requestId: null })
   assert.doesNotMatch(text, /leak/)
   assert.equal(calls, 0)
 })

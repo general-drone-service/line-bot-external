@@ -340,8 +340,19 @@ test("connection-level SDK errors are told apart without their cause", async () 
   assert.deepEqual(describeError(new Anthropic.APIConnectionTimeoutError()), { status: null, type: "timeout", requestId: null })
   assert.deepEqual(describeError(new Anthropic.APIConnectionError({ cause })), { status: null, type: "connection_error", requestId: null })
   assert.deepEqual(describeError(new Anthropic.APIUserAbortError()), { status: null, type: "aborted", requestId: null })
-  const plain = new Error("x")
-  assert.equal(describeError(plain), plain)
+})
+
+test("other errors are logged by name, status and code only, never their message", async () => {
+  const { describeError } = await import("@/lib/errors")
+  const { GatewayError } = await import("@/lib/botdb/gateway")
+  const { LineApiError } = await import("@/lib/line/send")
+  // A malformed key ends up in the SDK's header error message
+  const leaked = new TypeError('Headers.append: "sk-ant-secret\nx" is an invalid header value.')
+  assert.deepEqual(describeError(leaked), { status: null, type: "TypeError", requestId: null })
+  assert.deepEqual(describeError(new LineApiError("reply", 400)), { status: 400, type: "Error", requestId: null })
+  assert.deepEqual(describeError(new GatewayError("history.append", 500, "LB423", "sealed")), { status: 500, type: "LB423", requestId: null })
+  assert.deepEqual(describeError("boom"), { status: null, type: null, requestId: null })
+  assert.doesNotMatch(JSON.stringify([leaked, "x"].map(describeError)), /sk-ant|invalid header/)
 })
 
 test("a handoff followed by a failing AI call logs no customer details anywhere", async () => {
