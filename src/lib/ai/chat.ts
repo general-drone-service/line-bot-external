@@ -1,4 +1,4 @@
-import { getAnthropicClient } from "./client"
+import { CHAT_MODEL, getAnthropicClient } from "./client"
 import { SYSTEM_PROMPT } from "./system-prompt"
 import { TOOLS, executeTool } from "./tools"
 import type { ToolResult } from "./tools"
@@ -57,7 +57,7 @@ export async function handleAiChat(replyToken: string, userText: string, turn: C
 
   for (let i = 0; i < 3; i++) {
     const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: CHAT_MODEL,
       max_tokens: 512,
       system: SYSTEM_PROMPT,
       tools: TOOLS,

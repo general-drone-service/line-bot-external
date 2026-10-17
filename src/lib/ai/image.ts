@@ -1,4 +1,4 @@
-import { getAnthropicClient } from "./client"
+import { CHAT_MODEL, getAnthropicClient } from "./client"
 import { reply } from "@/lib/line"
 import type { LineMessage } from "@/lib/line"
 import { quickReply } from "@/lib/line"
@@ -42,7 +42,7 @@ export async function handleAiImage(replyToken: string, imageBase64: string, tur
   let rawText: string
   try {
     const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: CHAT_MODEL,
       max_tokens: 512,
       system: IMAGE_PROMPT,
       messages,
