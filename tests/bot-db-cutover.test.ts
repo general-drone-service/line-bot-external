@@ -209,7 +209,7 @@ test("cutover freeze stops AI replies and history writes but keeps the follow gr
   assert.equal(rows.size, 0)
 })
 
-test("request_human that cannot pause tells the AI the handoff failed", async () => {
+test("request_human that cannot pause still tells the customer a person will reply", async () => {
   const { db, pauses } = fakeDb({ setPause: async () => { throw sealed() } })
   setBotDbsForTest({ primary: db, fallback: null })
   let turn = 0
@@ -224,7 +224,9 @@ test("request_human that cannot pause tells the AI the handoff failed", async ()
   assert.equal((await webhook(signed([text("e1", "我要找真人")]))).status, 200)
   const second = calls.filter((c) => c.url === ANTHROPIC)[1].body as { messages: { content: unknown }[] }
   const toolResult = JSON.stringify(second.messages.at(-1)!.content)
-  assert.match(toolResult, /轉接失敗/)
+  assert.match(toolResult, /專人回覆/)
+  assert.match(toolResult, /02-7733-7678/)
+  assert.doesNotMatch(toolResult, /失敗|無法/)
   assert.doesNotMatch(toolResult, /已暫停/)
   assert.equal(pauses.size, 0)
 })
@@ -253,11 +255,11 @@ test("request_human keeps the pause once the alert is delivered", async () => {
   routes[ANTHROPIC] = handoffTurns()
   assert.equal((await webhook(signed([text("e1", "我要找真人")]))).status, 200)
   assert.equal(sent(ALERT), 1)
-  assert.match(toolResultOf(), /已通知客服團隊/)
+  assert.match(toolResultOf(), /專人回覆/)
   assert.ok(pauses.has("U1"))
 })
 
-test("request_human whose alert fails tells the AI the handoff failed and keeps the pause", async () => {
+test("request_human whose alert fails still promises a personal reply with the phone number and keeps the pause", async () => {
   const { db, pauses } = fakeDb()
   setBotDbsForTest({ primary: db, fallback: null })
   process.env.MANAGER_LINE_ALERT_URL = ALERT
@@ -266,8 +268,9 @@ test("request_human whose alert fails tells the AI the handoff failed and keeps 
   routes[ANTHROPIC] = handoffTurns()
   assert.equal((await webhook(signed([text("e1", "我要找真人")]))).status, 200)
   const result = toolResultOf()
-  assert.match(result, /轉接失敗/)
+  assert.match(result, /專人回覆/)
   assert.match(result, /02-7733-7678/)
+  assert.doesNotMatch(result, /失敗|無法/)
   assert.doesNotMatch(result, /已暫停/)
   // Undoing it could clear a concurrent handoff that did reach staff
   assert.ok(pauses.has("U1"))
@@ -290,7 +293,7 @@ test("request_human without a usable reason still alerts", async () => {
       : textReply("好的")()
   assert.equal((await webhook(signed([text("e1", "我要找真人")]))).status, 200)
   assert.equal(sent(ALERT), 1)
-  assert.match(toolResultOf(), /已通知客服團隊/)
+  assert.match(toolResultOf(), /專人回覆/)
 })
 
 function pauseRequest(action: string) {

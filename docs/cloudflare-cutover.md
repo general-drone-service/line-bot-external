@@ -37,7 +37,7 @@
 | `BOT_PAUSE_API_TOKEN` | `/api/bot-pause`、`/api/health/anthropic` 驗證 | **是**（要選 Secret 型別，不要用 Variable） | 已設（使用者 2026-10-16） |
 | `BOT_PAUSE_HOURS` | 暫停時數，預設 2 | 否 | 選用 |
 | `BUSINESS_HOURS_START`／`_END`／`_TZ`／`_DAYS` | 上班時間略過 AI，預設 9／18／Asia/Taipei／1–5 | 否 | 選用（Vercel 有設才照抄） |
-| `MANAGER_LINE_ALERT_URL` | 轉真人通知：manager-line 的 `/alert` 完整網址（LINE 推給 Teddy） | 否 | **必設**：沒有任何通知管道時，bot 會告訴客戶轉接失敗、請直接打電話 |
+| `MANAGER_LINE_ALERT_URL` | 轉真人通知：manager-line 的 `/alert` 完整網址（LINE 推給 Teddy） | 否 | **必設**：沒有任何通知管道時，通知不會送出，客戶會被告知由專人回覆並附上電話（見 `human-handoff.md`） |
 | `MANAGER_LINE_ALERT_TOKEN` | 上一列的 Bearer，值和 manager-line 的 `SUPPORT_ALERT_BEARER` 相同（客服 bot 專用，由使用者填，不是 `ALERT_BEARER`） | **是** | 和上一列一起設 |
 | `SENDGRID_API_KEY` | 轉真人 email 通知 | **是** | 選用 |
 | `NOTIFY_EMAIL_TO`／`NOTIFY_EMAIL_FROM` | 通知收件人／寄件人 | 個資，用 secret | 選用 |
@@ -73,7 +73,7 @@ sign() { printf '%s' "$1" | openssl dgst -sha256 -hmac "$LINE_CHANNEL_SECRET" -b
 4. **合成事件（回覆路徑與 DB 寫入）**：用假的 user ID 和假的 replyToken，送一個帶假報價編號的文字訊息。報價查詢 24 小時都會跑，所以不受上班時間影響。
    **前提**（假的 reply token 只會擋住最後的 LINE 回覆，擋不住前面的副作用）：
    - `CRM_PUSH_ENABLED` 必須是關閉的（照計畫，切換本來就排在 P1／P2 開關之前）。如果 P1 已經開了，要先把假 user ID 加進 `LINE_TEST_USER_IDS`。
-   - AI 有可能呼叫 `request_human`，這會對 Discord／email 發出轉真人通知並寫入 `bot_pause`。要先在通知頻道告知「切換測試，請忽略」，清理時也要一併刪除。
+   - AI 有可能呼叫 `request_human`，這會經 manager-line 推一則轉真人通知給 Teddy，並寫入 `bot_pause`。要先告訴 Teddy「切換測試，請忽略」；清理時 `bot_pause` 也要一併刪除。
    ```bash
    B='{"destination":"Utest","events":[{"type":"message","webhookEventId":"cutover-test-1","timestamp":'$(date +%s000)',"replyToken":"00000000000000000000000000000000","source":{"type":"user","userId":"Ucutovertest000000000000000000001"},"message":{"type":"text","id":"cutover-m1","text":"查報價 Q-00000000-000"}}]}'
    curl -s -w ' %{http_code}\n' -X POST $WORKER/api/webhook -H "x-line-signature: $(sign "$B")" -H 'content-type: application/json' -d "$B"

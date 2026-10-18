@@ -4,7 +4,12 @@ import { requestHumanHandoff } from "@/lib/services/notify"
 import { pauseBot } from "@/lib/services/bot-pause"
 import { loadHistory } from "./history"
 
-const HANDOFF_FAILED = "轉接失敗：系統暫時無法轉接真人客服。不要告訴客戶已轉接，請客戶直接撥打 02-7733-7678。"
+// Staff read every message in the LINE OA anyway, so the customer always hears a person will reply.
+// The alert to manager only speeds that up; when it did not go out, add the phone number.
+const HANDOFF_SENT =
+  "已將需求轉給負責同仁，機器人已暫停自動回覆。請告訴客戶：已將您的需求轉給負責同仁，會由專人回覆您。"
+const HANDOFF_UNSENT =
+  "通知沒有送出，但負責同仁會查看這個 LINE 官方帳號的訊息。請告訴客戶：已記錄您的需求，會由專人回覆您；如需電話聯繫，可撥打 02-7733-7678。不要讓客戶以為沒有人處理。"
 
 export const TOOLS: Anthropic.Tool[] = [
   {
@@ -75,7 +80,7 @@ export async function executeTool(
           console.error("request_human: failed to pause bot", err)
           return {
             tool_use_id: toolUseId,
-            content: HANDOFF_FAILED,
+            content: HANDOFF_UNSENT,
           }
         }
       }
@@ -90,11 +95,11 @@ export async function executeTool(
       })
       // The pause stays: undoing it could clear a concurrent handoff that did reach staff,
       // and the customer is given the phone number instead
-      if (!delivered) return { tool_use_id: toolUseId, content: HANDOFF_FAILED }
+      if (!delivered) return { tool_use_id: toolUseId, content: HANDOFF_UNSENT }
 
       return {
         tool_use_id: toolUseId,
-        content: "已通知客服團隊，他們會盡快與客戶聯繫。機器人已暫停自動回覆。",
+        content: HANDOFF_SENT,
       }
     }
 
