@@ -38,7 +38,7 @@
 | `BOT_PAUSE_HOURS` | 暫停時數，預設 2 | 否 | 選用 |
 | `BUSINESS_HOURS_START`／`_END`／`_TZ`／`_DAYS` | 上班時間略過 AI，預設 9／18／Asia/Taipei／1–5 | 否 | 選用（Vercel 有設才照抄） |
 | `MANAGER_LINE_ALERT_URL` | 轉真人通知：manager-line 的 `/alert` 完整網址（LINE 推給 Teddy） | 否 | **必設**：沒有任何通知管道時，bot 會告訴客戶轉接失敗、請直接打電話 |
-| `MANAGER_LINE_ALERT_TOKEN` | 上一列的 Bearer，值和 manager-line 的 `ALERT_BEARER` 相同 | **是** | 和上一列一起設 |
+| `MANAGER_LINE_ALERT_TOKEN` | 上一列的 Bearer，值和 manager-line 的 `SUPPORT_ALERT_BEARER` 相同（客服 bot 專用，由使用者填，不是 `ALERT_BEARER`） | **是** | 和上一列一起設 |
 | `SENDGRID_API_KEY` | 轉真人 email 通知 | **是** | 選用 |
 | `NOTIFY_EMAIL_TO`／`NOTIFY_EMAIL_FROM` | 通知收件人／寄件人 | 個資，用 secret | 選用 |
 | `LINE_TRACKING_ENABLED` | P1 追蹤開關，`true` 才啟用 | 否 | P1 上線時才設 |
