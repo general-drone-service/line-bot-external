@@ -229,6 +229,70 @@ test("request_human that cannot pause tells the AI the handoff failed", async ()
   assert.equal(pauses.size, 0)
 })
 
+const ALERT = "https://manager-line.example.workers.dev/alert"
+const handoffTurns = () => {
+  let turn = 0
+  return () =>
+    turn++ === 0
+      ? Response.json({
+          id: "msg_0", type: "message", role: "assistant", model: "claude-haiku-4-5-20251001",
+          content: [{ type: "tool_use", id: "tu1", name: "request_human", input: { reason: "要真人" } }],
+          stop_reason: "tool_use", stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 },
+        })
+      : textReply("好的")()
+}
+const toolResultOf = () =>
+  JSON.stringify((calls.filter((c) => c.url === ANTHROPIC)[1].body as { messages: { content: unknown }[] }).messages.at(-1)!.content)
+
+test("request_human keeps the pause once the alert is delivered", async () => {
+  const { db, pauses } = fakeDb()
+  setBotDbsForTest({ primary: db, fallback: null })
+  process.env.MANAGER_LINE_ALERT_URL = ALERT
+  process.env.MANAGER_LINE_ALERT_TOKEN = "test-alert-token"
+  routes[ALERT] = () => Response.json({ sent: true }, { status: 202 })
+  routes[ANTHROPIC] = handoffTurns()
+  assert.equal((await webhook(signed([text("e1", "我要找真人")]))).status, 200)
+  assert.equal(sent(ALERT), 1)
+  assert.match(toolResultOf(), /已通知客服團隊/)
+  assert.ok(pauses.has("U1"))
+})
+
+test("request_human whose alert fails tells the AI the handoff failed and keeps the pause", async () => {
+  const { db, pauses } = fakeDb()
+  setBotDbsForTest({ primary: db, fallback: null })
+  process.env.MANAGER_LINE_ALERT_URL = ALERT
+  process.env.MANAGER_LINE_ALERT_TOKEN = "test-alert-token"
+  routes[ALERT] = () => Response.json({ error: "line push failed" }, { status: 502 })
+  routes[ANTHROPIC] = handoffTurns()
+  assert.equal((await webhook(signed([text("e1", "我要找真人")]))).status, 200)
+  const result = toolResultOf()
+  assert.match(result, /轉接失敗/)
+  assert.match(result, /02-7733-7678/)
+  assert.doesNotMatch(result, /已暫停/)
+  // Undoing it could clear a concurrent handoff that did reach staff
+  assert.ok(pauses.has("U1"))
+})
+
+test("request_human without a usable reason still alerts", async () => {
+  const { db } = fakeDb()
+  setBotDbsForTest({ primary: db, fallback: null })
+  process.env.MANAGER_LINE_ALERT_URL = ALERT
+  process.env.MANAGER_LINE_ALERT_TOKEN = "test-alert-token"
+  routes[ALERT] = () => Response.json({ sent: true }, { status: 202 })
+  let turn = 0
+  routes[ANTHROPIC] = () =>
+    turn++ === 0
+      ? Response.json({
+          id: "msg_0", type: "message", role: "assistant", model: "claude-haiku-4-5-20251001",
+          content: [{ type: "tool_use", id: "tu1", name: "request_human", input: { reason: null } }],
+          stop_reason: "tool_use", stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 },
+        })
+      : textReply("好的")()
+  assert.equal((await webhook(signed([text("e1", "我要找真人")]))).status, 200)
+  assert.equal(sent(ALERT), 1)
+  assert.match(toolResultOf(), /已通知客服團隊/)
+})
+
 function pauseRequest(action: string) {
   return new Request("https://example.test/api/bot-pause", {
     method: "POST",

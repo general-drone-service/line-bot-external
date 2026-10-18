@@ -4,6 +4,8 @@ import { requestHumanHandoff } from "@/lib/services/notify"
 import { pauseBot } from "@/lib/services/bot-pause"
 import { loadHistory } from "./history"
 
+const HANDOFF_FAILED = "轉接失敗：系統暫時無法轉接真人客服。不要告訴客戶已轉接，請客戶直接撥打 02-7733-7678。"
+
 export const TOOLS: Anthropic.Tool[] = [
   {
     name: "search_knowledge",
@@ -62,7 +64,8 @@ export async function executeTool(
     }
 
     case "request_human": {
-      const reason = input.reason as string
+      // Model-supplied input: never trust its shape
+      const reason = typeof input.reason === "string" && input.reason.trim() ? input.reason : "（未說明原因）"
 
       // Pause first so the bot never claims a handoff while it would keep replying
       if (userId) {
@@ -72,7 +75,7 @@ export async function executeTool(
           console.error("request_human: failed to pause bot", err)
           return {
             tool_use_id: toolUseId,
-            content: "轉接失敗：系統暫時無法轉接真人客服。不要告訴客戶已轉接，請客戶直接撥打 02-7733-7678。",
+            content: HANDOFF_FAILED,
           }
         }
       }
@@ -80,11 +83,14 @@ export async function executeTool(
       const history = userId ? await loadHistory(userId) : []
       const lastMessages = history.slice(-6).map((m) => `${m.role}: ${m.content}`)
 
-      await requestHumanHandoff({
+      const delivered = await requestHumanHandoff({
         userId: userId ?? "unknown",
         reason,
         lastMessages,
       })
+      // The pause stays: undoing it could clear a concurrent handoff that did reach staff,
+      // and the customer is given the phone number instead
+      if (!delivered) return { tool_use_id: toolUseId, content: HANDOFF_FAILED }
 
       return {
         tool_use_id: toolUseId,

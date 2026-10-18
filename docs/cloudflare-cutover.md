@@ -34,13 +34,13 @@
 | `SUPABASE_URL` | quote-drone168 | 否（但不放進 repo） | 切換前 |
 | `SUPABASE_SERVICE_ROLE_KEY` | quote-drone168 service role | **是** | 切換前 |
 | `QUOTE_SUPABASE_URL`／`QUOTE_SUPABASE_SERVICE_ROLE_KEY` | 上一列的備用名稱（程式用 `??` 取用） | 同上 | 兩組擇一，沿用 Vercel 上實際有設的那組 |
-| `BOT_PAUSE_API_TOKEN` | `/api/bot-pause` 驗證 | **是** | 已設（使用者 2026-10-16） |
+| `BOT_PAUSE_API_TOKEN` | `/api/bot-pause`、`/api/health/anthropic` 驗證 | **是**（要選 Secret 型別，不要用 Variable） | 已設（使用者 2026-10-16） |
 | `BOT_PAUSE_HOURS` | 暫停時數，預設 2 | 否 | 選用 |
 | `BUSINESS_HOURS_START`／`_END`／`_TZ`／`_DAYS` | 上班時間略過 AI，預設 9／18／Asia/Taipei／1–5 | 否 | 選用（Vercel 有設才照抄） |
-| `DISCORD_WEBHOOK_URL` | 轉真人通知 | **是**（URL 本身就含 token） | 選用 |
+| `MANAGER_LINE_ALERT_URL` | 轉真人通知：manager-line 的 `/alert` 完整網址（LINE 推給 Teddy） | 否 | **必設**：沒有任何通知管道時，bot 會告訴客戶轉接失敗、請直接打電話 |
+| `MANAGER_LINE_ALERT_TOKEN` | 上一列的 Bearer，值和 manager-line 的 `SUPPORT_ALERT_BEARER` 相同（客服 bot 專用，由使用者填，不是 `ALERT_BEARER`） | **是** | 和上一列一起設 |
 | `SENDGRID_API_KEY` | 轉真人 email 通知 | **是** | 選用 |
 | `NOTIFY_EMAIL_TO`／`NOTIFY_EMAIL_FROM` | 通知收件人／寄件人 | 個資，用 secret | 選用 |
-| `LINE_NOTIFY_ACCESS_TOKEN` | LINE Notify 通知 | **是** | 選用（LINE Notify 已停止服務，可以不設） |
 | `LINE_TRACKING_ENABLED` | P1 追蹤開關，`true` 才啟用 | 否 | P1 上線時才設 |
 | `LINE_TRACKING_TOKEN_SECRET` | 來源 token 的 HMAC 金鑰 | **是** | P1 上線時才設（新產生，至少 32 bytes 亂數） |
 | `LINE_TRACKING_TOKEN_TTL_DAYS` | token 有效天數，預設 30 | 否 | 選用 |
