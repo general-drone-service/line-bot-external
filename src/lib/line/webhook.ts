@@ -17,10 +17,23 @@ import type { LineEvent, LineWebhookBody } from "./types"
 export type EventOutcome = "sent" | "skipped"
 export type EventHandler = (event: LineEvent, accountId: string) => Promise<EventOutcome>
 
+/**
+ * `defer` hands the replies to the platform's waitUntil so they finish even after LINE drops the
+ * connection; the response is then 200 once the batch is recorded, so a background failure is only
+ * logged (not redelivered). Without it, replies run inline and failures return 500 for redelivery.
+ */
+export interface WebhookOptions {
+  /** Schedules the task after the response; returns false when it cannot (replies then run inline) */
+  defer?: (task: () => Promise<void>) => boolean
+  /** Log when a deferred batch is still running after this long (Workers cancels waitUntil at 30 s) */
+  slowMs?: number
+}
+
 export async function handleWebhookRequest(
   request: Request,
   handleEvent: EventHandler,
-  store: TrackingStore = trackingEnabled() ? crmTrackingStore : passthroughTrackingStore
+  store: TrackingStore = trackingEnabled() ? crmTrackingStore : passthroughTrackingStore,
+  options: WebhookOptions = {}
 ): Promise<Response> {
   const rawBody = await request.text()
 
@@ -67,17 +80,46 @@ export async function handleWebhookRequest(
     return NextResponse.json({ error: "Tracking unavailable" }, { status: 500 })
   }
 
-  const testUsers = testUserIds()
-  let failed = 0
-  for (const event of body.events) {
-    if (!(await trackEvent(store, accountId, event, testUsers))) failed++
-    if (!(await replyToEvent(store, accountId, event, handleEvent))) failed++
+  const events = body.events
+  if (options.defer?.(() => processInBackground(store, accountId, events, handleEvent, options.slowMs ?? 25_000))) {
+    return NextResponse.json({ ok: true })
   }
 
+  const failed = await processEvents(store, accountId, events, handleEvent)
   if (failed > 0) {
     return NextResponse.json({ error: "Event handling failed", failed }, { status: 500 })
   }
   return NextResponse.json({ ok: true })
+}
+
+/** Tracks and replies to each event in order; returns how many steps failed. */
+async function processEvents(store: TrackingStore, accountId: string, events: LineEvent[], handleEvent: EventHandler) {
+  const testUsers = testUserIds()
+  let failed = 0
+  for (const event of events) {
+    if (!(await trackEvent(store, accountId, event, testUsers))) failed++
+    if (!(await replyToEvent(store, accountId, event, handleEvent))) failed++
+  }
+  return failed
+}
+
+async function processInBackground(
+  store: TrackingStore,
+  accountId: string,
+  events: LineEvent[],
+  handleEvent: EventHandler,
+  slowMs: number
+) {
+  const ids = events.map((e) => e.webhookEventId).join(",")
+  const slow = setTimeout(() => console.error(`LINE webhook: batch still running after ${slowMs}ms`, ids), slowMs)
+  try {
+    const failed = await processEvents(store, accountId, events, handleEvent)
+    if (failed > 0) console.error(`LINE webhook: ${failed} step(s) failed in background`, ids)
+  } catch (err) {
+    console.error("LINE webhook: batch failed in background", ids, describeError(err))
+  } finally {
+    clearTimeout(slow)
+  }
 }
 
 async function trackEvent(store: TrackingStore, accountId: string, event: LineEvent, testUsers: Set<string>) {

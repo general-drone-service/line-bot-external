@@ -266,3 +266,89 @@ test("failure to store the reply status after sending returns 500 but never re-s
   await handleWebhookRequest(webhookRequest(body), handle, fake.store)
   assert.equal(seen.length, 1)
 })
+
+// ─── Deferred processing: respond first, reply in the background (#100) ─────
+
+/** Captures the background task instead of running it, like a platform waitUntil. */
+function deferred() {
+  const tasks: (() => Promise<void>)[] = []
+  return { tasks, defer: (task: () => Promise<void>) => (tasks.push(task), true) }
+}
+
+function captureConsoleError() {
+  const lines: string[] = []
+  const real = console.error
+  console.error = (...args: unknown[]) => void lines.push(args.map(String).join(" "))
+  return { lines, restore: () => (console.error = real) }
+}
+
+test("with defer, responds 200 before the handler settles and replies afterwards", async () => {
+  let release!: () => void
+  const gate = new Promise<void>((r) => (release = r))
+  const seen: LineEvent[] = []
+  const handle = async (event: LineEvent): Promise<EventOutcome> => {
+    seen.push(event)
+    await gate
+    return "sent"
+  }
+  const { store, status } = fakeStore()
+  const { tasks, defer } = deferred()
+  const event = textEvent("hi")
+  const res = await handleWebhookRequest(webhookRequest(batch(event)), handle, store, { defer })
+  assert.equal(res.status, 200)
+  assert.deepEqual(await res.json(), { ok: true })
+  assert.equal(tasks.length, 1)
+  assert.equal(status(event.webhookEventId!), "pending")
+
+  const running = tasks[0]()
+  release()
+  await running
+  assert.equal(seen.length, 1)
+  assert.equal(status(event.webhookEventId!), "sent")
+})
+
+test("with defer, a handler failure is logged and never rejects the background task", async () => {
+  const { handle } = recorder(() => new Error("boom"))
+  const { tasks, defer } = deferred()
+  const res = await handleWebhookRequest(webhookRequest(batch(textEvent("hi"))), handle, fakeStore().store, { defer })
+  assert.equal(res.status, 200)
+  const log = captureConsoleError()
+  try {
+    await tasks[0]()
+  } finally {
+    log.restore()
+  }
+  assert.ok(log.lines.some((l) => l.includes("failed in background")), log.lines.join("\n"))
+})
+
+test("with defer, a batch still running past slowMs is logged", async () => {
+  const handle = async (): Promise<EventOutcome> => {
+    await new Promise((r) => setTimeout(r, 40))
+    return "sent"
+  }
+  const { tasks, defer } = deferred()
+  await handleWebhookRequest(webhookRequest(batch(textEvent("hi"))), handle, fakeStore().store, { defer, slowMs: 5 })
+  const log = captureConsoleError()
+  try {
+    await tasks[0]()
+  } finally {
+    log.restore()
+  }
+  assert.ok(log.lines.some((l) => l.includes("still running")), log.lines.join("\n"))
+})
+
+test("a defer that cannot schedule falls back to inline replies with the 500 retry contract", async () => {
+  const { seen, handle } = recorder(() => new Error("boom"))
+  const res = await handleWebhookRequest(webhookRequest(batch(textEvent("hi"))), handle, fakeStore().store, { defer: () => false })
+  assert.equal(res.status, 500)
+  assert.equal(seen.length, 1)
+})
+
+test("with defer, an invalid signature is still rejected without scheduling work", async () => {
+  const { tasks, defer } = deferred()
+  const { seen, handle } = recorder()
+  const res = await handleWebhookRequest(webhookRequest(batch(textEvent("hi")), "short"), handle, fakeStore().store, { defer })
+  assert.equal(res.status, 401)
+  assert.equal(tasks.length, 0)
+  assert.equal(seen.length, 0)
+})

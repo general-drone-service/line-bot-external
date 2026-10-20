@@ -5,11 +5,25 @@ import { handleAiChat, handleAiImage } from "@/lib/ai"
 import { isBotPaused } from "@/lib/services/bot-pause"
 import { isDuringBusinessHours } from "@/lib/services/business-hours"
 import { cutoverFrozen } from "@/lib/botdb"
+import { describeError } from "@/lib/errors"
+import { after } from "next/server"
 
 export const runtime = "nodejs"
 
 export async function POST(request: Request) {
-  return handleWebhookRequest(request, handleEvent)
+  return handleWebhookRequest(request, handleEvent, undefined, { defer: deferAfterResponse })
+}
+
+// Workers cancels unfinished work once LINE disconnects; after() maps to waitUntil on Workers and Vercel
+function deferAfterResponse(task: () => Promise<void>) {
+  try {
+    after(task)
+    return true
+  } catch (err) {
+    // after() needs a request scope (absent in tests): fall back to inline replies rather than drop the event
+    console.warn("LINE webhook: after() unavailable, handling inline", describeError(err))
+    return false
+  }
 }
 
 async function handleEvent(event: LineEvent, accountId: string): Promise<EventOutcome> {
