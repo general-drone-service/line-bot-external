@@ -1,0 +1,461 @@
+{
+  "schema_version": 1,
+  "notice": "Synthetic S0 specification vectors, not test execution results. No production data.",
+  "account_id": "synthetic-account-1",
+  "request_id": "11111111-1111-4111-8111-111111111111",
+  "cases": [
+    {
+      "name": "base",
+      "input": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "synthetic inquiry"
+        }
+      },
+      "projection": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "synthetic inquiry"
+        }
+      },
+      "canonical": "{\"message\":{\"id\":\"synthetic-message-1\",\"text\":\"synthetic inquiry\",\"type\":\"text\"},\"mode\":\"active\",\"source\":{\"type\":\"user\",\"userId\":\"synthetic-user-1\"},\"timestamp\":1793788800000,\"type\":\"message\",\"webhookEventId\":\"synthetic-event-1\"}",
+      "canonical_event_hash_v1": "484c8f5053b619040416f34780b435416fd5d0e643198ab93f9043e38d3ef73c",
+      "expected_status": "pending"
+    },
+    {
+      "name": "redelivery",
+      "input": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "synthetic inquiry"
+        },
+        "deliveryContext": {
+          "isRedelivery": true
+        },
+        "replyToken": "synthetic-not-a-secret"
+      },
+      "projection": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "synthetic inquiry"
+        }
+      },
+      "canonical": "{\"message\":{\"id\":\"synthetic-message-1\",\"text\":\"synthetic inquiry\",\"type\":\"text\"},\"mode\":\"active\",\"source\":{\"type\":\"user\",\"userId\":\"synthetic-user-1\"},\"timestamp\":1793788800000,\"type\":\"message\",\"webhookEventId\":\"synthetic-event-1\"}",
+      "canonical_event_hash_v1": "484c8f5053b619040416f34780b435416fd5d0e643198ab93f9043e38d3ef73c",
+      "expected_status": "pending"
+    },
+    {
+      "name": "reordered",
+      "input": {
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "synthetic inquiry"
+        },
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "mode": "active",
+        "type": "message",
+        "timestamp": 1793788800000,
+        "webhookEventId": "synthetic-event-1"
+      },
+      "projection": {
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "synthetic inquiry"
+        },
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "mode": "active",
+        "type": "message",
+        "timestamp": 1793788800000,
+        "webhookEventId": "synthetic-event-1"
+      },
+      "canonical": "{\"message\":{\"id\":\"synthetic-message-1\",\"text\":\"synthetic inquiry\",\"type\":\"text\"},\"mode\":\"active\",\"source\":{\"type\":\"user\",\"userId\":\"synthetic-user-1\"},\"timestamp\":1793788800000,\"type\":\"message\",\"webhookEventId\":\"synthetic-event-1\"}",
+      "canonical_event_hash_v1": "484c8f5053b619040416f34780b435416fd5d0e643198ab93f9043e38d3ef73c",
+      "expected_status": "pending"
+    },
+    {
+      "name": "business_changed",
+      "input": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "other inquiry"
+        }
+      },
+      "projection": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "other inquiry"
+        }
+      },
+      "canonical": "{\"message\":{\"id\":\"synthetic-message-1\",\"text\":\"other inquiry\",\"type\":\"text\"},\"mode\":\"active\",\"source\":{\"type\":\"user\",\"userId\":\"synthetic-user-1\"},\"timestamp\":1793788800000,\"type\":\"message\",\"webhookEventId\":\"synthetic-event-1\"}",
+      "canonical_event_hash_v1": "37a7bda3fbef03cec4d04b045991c66ee85b2ef042e237a5e0157e0d367700eb",
+      "expected_status": "pending"
+    },
+    {
+      "name": "unknown_business",
+      "input": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "synthetic inquiry"
+        },
+        "unknownBusiness": "preserve me"
+      },
+      "projection": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "synthetic inquiry"
+        },
+        "unknownBusiness": "preserve me"
+      },
+      "canonical": "{\"message\":{\"id\":\"synthetic-message-1\",\"text\":\"synthetic inquiry\",\"type\":\"text\"},\"mode\":\"active\",\"source\":{\"type\":\"user\",\"userId\":\"synthetic-user-1\"},\"timestamp\":1793788800000,\"type\":\"message\",\"unknownBusiness\":\"preserve me\",\"webhookEventId\":\"synthetic-event-1\"}",
+      "canonical_event_hash_v1": "c0134b85aa8a459d16e27b8c78817b0077612212424bb77cf1cf7944834469c1",
+      "expected_status": "quarantined_schema"
+    },
+    {
+      "name": "nested_replyToken",
+      "input": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "synthetic inquiry",
+          "replyToken": "nested business field"
+        }
+      },
+      "projection": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "synthetic inquiry",
+          "replyToken": "nested business field"
+        }
+      },
+      "canonical": "{\"message\":{\"id\":\"synthetic-message-1\",\"replyToken\":\"nested business field\",\"text\":\"synthetic inquiry\",\"type\":\"text\"},\"mode\":\"active\",\"source\":{\"type\":\"user\",\"userId\":\"synthetic-user-1\"},\"timestamp\":1793788800000,\"type\":\"message\",\"webhookEventId\":\"synthetic-event-1\"}",
+      "canonical_event_hash_v1": "d0ba167d276d9277a97bacaefad338028439e71361c241a1c4ddc1e6f22af5fe",
+      "expected_status": "quarantined_schema"
+    },
+    {
+      "name": "unicode_composed",
+      "input": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "é"
+        }
+      },
+      "projection": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "é"
+        }
+      },
+      "canonical": "{\"message\":{\"id\":\"synthetic-message-1\",\"text\":\"é\",\"type\":\"text\"},\"mode\":\"active\",\"source\":{\"type\":\"user\",\"userId\":\"synthetic-user-1\"},\"timestamp\":1793788800000,\"type\":\"message\",\"webhookEventId\":\"synthetic-event-1\"}",
+      "canonical_event_hash_v1": "395b814945608b711f4eb83a27459612af4bd86d827665409828600234673ed5",
+      "expected_status": "pending"
+    },
+    {
+      "name": "unicode_decomposed",
+      "input": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "é"
+        }
+      },
+      "projection": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "é"
+        }
+      },
+      "canonical": "{\"message\":{\"id\":\"synthetic-message-1\",\"text\":\"é\",\"type\":\"text\"},\"mode\":\"active\",\"source\":{\"type\":\"user\",\"userId\":\"synthetic-user-1\"},\"timestamp\":1793788800000,\"type\":\"message\",\"webhookEventId\":\"synthetic-event-1\"}",
+      "canonical_event_hash_v1": "77310cc3a8c0dc7737d65469c3b49feef869731ee718f11b7684f4e4b25f78fd",
+      "expected_status": "pending"
+    },
+    {
+      "name": "unsend",
+      "input": {
+        "webhookEventId": "synthetic-unsend-1",
+        "timestamp": 1793788801000,
+        "type": "unsend",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "unsend": {
+          "messageId": "synthetic-message-1"
+        }
+      },
+      "projection": {
+        "webhookEventId": "synthetic-unsend-1",
+        "timestamp": 1793788801000,
+        "type": "unsend",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "unsend": {
+          "messageId": "synthetic-message-1"
+        }
+      },
+      "canonical": "{\"mode\":\"active\",\"source\":{\"type\":\"user\",\"userId\":\"synthetic-user-1\"},\"timestamp\":1793788801000,\"type\":\"unsend\",\"unsend\":{\"messageId\":\"synthetic-message-1\"},\"webhookEventId\":\"synthetic-unsend-1\"}",
+      "canonical_event_hash_v1": "a5d0f29611a47cec49e522d60f365f5017fbc5d0d42ae08ac2283e0fa4ec24ab",
+      "expected_status": "withdrawn"
+    },
+    {
+      "name": "official_text_metadata",
+      "input": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "synthetic inquiry",
+          "quoteToken": "synthetic-quote-token",
+          "markAsReadToken": "synthetic-read-token",
+          "quotedMessageId": "synthetic-previous-message",
+          "emojis": [
+            {
+              "index": 0,
+              "length": 1,
+              "productId": "synthetic-product",
+              "emojiId": "synthetic-emoji"
+            }
+          ],
+          "mention": {
+            "mentionees": [
+              {
+                "index": 0,
+                "length": 1,
+                "type": "user",
+                "isSelf": true,
+                "userId": "synthetic-bot"
+              }
+            ]
+          }
+        }
+      },
+      "projection": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "synthetic inquiry",
+          "quoteToken": "synthetic-quote-token",
+          "markAsReadToken": "synthetic-read-token",
+          "quotedMessageId": "synthetic-previous-message",
+          "emojis": [
+            {
+              "index": 0,
+              "length": 1,
+              "productId": "synthetic-product",
+              "emojiId": "synthetic-emoji"
+            }
+          ],
+          "mention": {
+            "mentionees": [
+              {
+                "index": 0,
+                "length": 1,
+                "type": "user",
+                "isSelf": true,
+                "userId": "synthetic-bot"
+              }
+            ]
+          }
+        }
+      },
+      "canonical": "{\"message\":{\"emojis\":[{\"emojiId\":\"synthetic-emoji\",\"index\":0,\"length\":1,\"productId\":\"synthetic-product\"}],\"id\":\"synthetic-message-1\",\"markAsReadToken\":\"synthetic-read-token\",\"mention\":{\"mentionees\":[{\"index\":0,\"isSelf\":true,\"length\":1,\"type\":\"user\",\"userId\":\"synthetic-bot\"}]},\"quoteToken\":\"synthetic-quote-token\",\"quotedMessageId\":\"synthetic-previous-message\",\"text\":\"synthetic inquiry\",\"type\":\"text\"},\"mode\":\"active\",\"source\":{\"type\":\"user\",\"userId\":\"synthetic-user-1\"},\"timestamp\":1793788800000,\"type\":\"message\",\"webhookEventId\":\"synthetic-event-1\"}",
+      "canonical_event_hash_v1": "fef35dc1a52d43f7ea31ac689f67104b35dd28f27ee8d7c87c00a37d6e102154",
+      "expected_status": "pending",
+      "persisted_event": {
+        "webhookEventId": "synthetic-event-1",
+        "timestamp": 1793788800000,
+        "type": "message",
+        "mode": "active",
+        "source": {
+          "type": "user",
+          "userId": "synthetic-user-1"
+        },
+        "message": {
+          "id": "synthetic-message-1",
+          "type": "text",
+          "text": "synthetic inquiry",
+          "quotedMessageId": "synthetic-previous-message",
+          "emojis": [
+            {
+              "index": 0,
+              "length": 1,
+              "productId": "synthetic-product",
+              "emojiId": "synthetic-emoji"
+            }
+          ],
+          "mention": {
+            "mentionees": [
+              {
+                "index": 0,
+                "length": 1,
+                "type": "user",
+                "isSelf": true,
+                "userId": "synthetic-bot"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "retention": [
+    {
+      "received_at": "2028-02-29T12:00:00Z",
+      "expires_at": "2029-02-28T12:00:00Z"
+    },
+    {
+      "received_at": "2026-11-04T12:00:00Z",
+      "expires_at": "2027-11-04T12:00:00Z"
+    }
+  ]
+}
