@@ -1,3 +1,4 @@
+import { configuredInbox, type DurableInbox } from "@/lib/inbox/ingress"
 import { NextResponse } from "next/server"
 import { extractToken, hashToken, stripToken } from "@/lib/tracking/token"
 import {
@@ -23,6 +24,9 @@ export type EventHandler = (event: LineEvent, accountId: string) => Promise<Even
  * logged (not redelivered). Without it, replies run inline and failures return 500 for redelivery.
  */
 export interface WebhookOptions {
+  /** Optional dependency injection; production uses explicit false-by-default env flags. */
+  inbox?: DurableInbox
+
   /** Schedules the task after the response; returns false when it cannot (replies then run inline) */
   defer?: (task: () => Promise<void>) => boolean
   /** Log when a deferred batch is still running after this long (Workers cancels waitUntil at 30 s) */
@@ -60,7 +64,11 @@ export async function handleWebhookRequest(
   if (!Array.isArray(body?.events)) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 })
   }
-  // LINE console "Verify" sends no events
+  const inbox = options.inbox ?? configuredInbox()
+  if (inbox && (!inbox.accountId || body.destination !== inbox.accountId)) {
+    return NextResponse.json({ error: inbox.accountId ? "Account forbidden" : "Inbox unavailable" }, { status: inbox.accountId ? 403 : 503 })
+  }
+  // LINE console "Verify" sends no events; enabled v1 still checks the configured destination.
   if (body.events.length === 0) return NextResponse.json({ ok: true })
 
   const accountId = body.destination
@@ -70,6 +78,15 @@ export async function handleWebhookRequest(
     body.events.some((e) => typeof e?.webhookEventId !== "string" || typeof e.timestamp !== "number")
   ) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 })
+  }
+
+  if (inbox) {
+    try { await inbox.record(rawBody, accountId, body.events) }
+    catch {
+      // Never log the error object: remote failures may contain customer text or tokens.
+      console.error("LINE inbox persistence unavailable")
+      return NextResponse.json({error:"Inbox unavailable"},{status:503})
+    }
   }
 
   // Persist the whole batch before any reply: on failure nothing was sent, so LINE redelivery is safe
